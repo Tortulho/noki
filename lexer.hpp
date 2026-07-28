@@ -115,6 +115,8 @@ const KEYWORD KEYWORDS[] = {
     {"exit",        Token::TokenType::EXIT      },
     {"true",        Token::TokenType::BOOL      },
     {"false",       Token::TokenType::BOOL      },
+    {"and",    Token::TokenType::BINARY_OPERATOR},
+    {"or",     Token::TokenType::BINARY_OPERATOR},
 };
 
 #endif

@@ -212,8 +212,14 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
             //if reserved
             std::string_view word(input.data() + start, pos - start);
             Token::TokenType type = isReserved(word);
-            
-            tokens.push_back({&input[start], pos-start, type});
+
+            //fast patch - ducttape
+            if (type == Token::BINARY_OPERATOR) {
+                if (word == "and") tokens.push_back({"&&",2,Token::BINARY_OPERATOR});
+                else tokens.push_back({"||",2,Token::BINARY_OPERATOR});
+            } else {          
+                tokens.push_back({&input[start], pos-start, type});
+            }
 
             continue;
         }
