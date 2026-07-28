@@ -26,8 +26,11 @@ class Parser {
         // parseUnary(); // + -
         // parsePrimary(); 
 
+        std::unique_ptr<ASTNode> parseIf();
+        std::unique_ptr<ASTNode> parseBlock();
         std::unique_ptr<ASTNode> parseStatement();
         std::unique_ptr<ASTNode> parseAssignment();
+        std::unique_ptr<ASTNode> parseComp();
         std::unique_ptr<ASTNode> parseTerm();
         std::unique_ptr<ASTNode> parseFactor();
         std::unique_ptr<ASTNode> parsePower();

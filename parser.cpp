@@ -33,14 +33,77 @@ std::unique_ptr<ASTNode> Parser::parseStatement() {
 
     if (current.getType() == (Token::TokenType::null)) return ASTNode::ast_newNULL();
     if (current.getType() == (Token::TokenType::EXIT)) exit(EXIT_SUCCESS);
+    if (current.getType() == Token::OPEN_SCOPE) return parseBlock();
+    if (current.getType() == Token::IF) return parseIf();
 
     return parseAssignment();
 
 }
 
+std::unique_ptr<ASTNode> Parser::parseIf()
+{
+    // consumir "if"
+    idx_currentToken++;
+
+    auto condition = parseAssignment();
+    if (condition == nullptr) return nullptr;
+
+    auto trueBlock = parseBlock();
+    if (trueBlock == nullptr) return nullptr;
+
+    // existe else?
+    if (current.getType() == Token::ELSE)
+    {
+        idx_currentToken++; // consumir else
+
+        auto falseBlock = parseBlock();
+        if (falseBlock == nullptr) return nullptr;
+
+        return ASTNode::ast_newIf(
+            std::move(condition),
+            std::move(trueBlock),
+            std::move(falseBlock));
+    }
+
+    // if sem else
+    return ASTNode::ast_newIf(
+        std::move(condition),
+        std::move(trueBlock),
+        nullptr);
+}
+
+std::unique_ptr<ASTNode> Parser::parseBlock()
+{
+    if (current.getType() != Token::OPEN_SCOPE) return nullptr;
+
+    idx_currentToken++; // consumir {
+
+    auto block = ASTNode::ast_newBlock();
+
+    while (current.getType() != Token::CLOSE_SCOPE
+        && current.getType() != Token::END_OF_FILE)
+    {
+        auto statement = parseStatement();
+
+        if (statement == nullptr) return nullptr;
+
+        block->children.push_back(std::move(statement));
+
+        // se NEXTLINE:
+        if (current.getType() == Token::NEWLINE_or_SEMICOLON) idx_currentToken++;
+    }
+
+    //se tivermos fim de scope sem o indicativo devemos return null, ou seja, a operaçao nao tem valor
+    if (current.getType() != Token::CLOSE_SCOPE) return nullptr;
+
+    idx_currentToken++; // consumir }
+
+    return block;
+}
+
 std::unique_ptr<ASTNode> Parser::parseAssignment() {
 
-    std::unique_ptr<ASTNode> left = parseTerm();
+    std::unique_ptr<ASTNode> left = parseComp();
     if (left == nullptr) return nullptr;
 
     if (current.getType() == (Token::TokenType::EQUAL)) {
@@ -54,6 +117,36 @@ std::unique_ptr<ASTNode> Parser::parseAssignment() {
 
 }
 
+std::unique_ptr<ASTNode> Parser::parseComp() {
+    std::unique_ptr<ASTNode> left = parseTerm();
+    if (left == nullptr) return nullptr;
+
+    while (true)
+    {
+        ASTNode::TypeOp op = getASTop(current);
+
+        if (op != ASTNode::EQUAL &&
+            op != ASTNode::NOT_EQUAL &&
+            op != ASTNode::LESS &&
+            op != ASTNode::LESS_EQUAL &&
+            op != ASTNode::GREATER &&
+            op != ASTNode::GREATER_EQUAL &&
+            op != ASTNode::AND &&
+            op != ASTNode::OR)
+        {
+            break;
+        }
+
+        idx_currentToken++;
+
+        std::unique_ptr<ASTNode> right = parseTerm();
+        if (right == nullptr) return nullptr;
+
+        left = ASTNode::ast_newBinary(op,std::move(left),std::move(right));
+    }
+
+    return left;
+}
 
 
 std::unique_ptr<ASTNode> Parser::parseTerm()
@@ -252,6 +345,24 @@ ASTNode::TypeOp Parser::getASTop(Token& token) {
         if (strcut == "^") {
             return ASTNode::TypeOp::POW;
         }
+        if (strcut == "!")
+            return ASTNode::TypeOp::NEGATIVE;
+        if (strcut == "==")
+            return ASTNode::TypeOp::EQUAL;
+        if (strcut == "!=")
+            return ASTNode::TypeOp::NOT_EQUAL;
+        if (strcut == "<")
+            return ASTNode::TypeOp::LESS;
+        if (strcut == "<=")
+            return ASTNode::TypeOp::LESS_EQUAL;
+        if (strcut == ">")
+            return ASTNode::TypeOp::GREATER;
+        if (strcut == ">")
+            return ASTNode::TypeOp::GREATER_EQUAL;
+        if (strcut == "&&")
+            return ASTNode::TypeOp::AND;
+        if (strcut == "&&")
+            return ASTNode::TypeOp::OR;
         return ASTNode::TypeOp::NONE;
         //TODO: IMPLEMENTAR COMPS AQUI
 
@@ -261,6 +372,9 @@ ASTNode::TypeOp Parser::getASTop(Token& token) {
             return ASTNode::TypeOp::POSITIVE;
         }
         if (strcut == "-") {
+            return ASTNode::TypeOp::NEGATIVE;
+        }
+        if (strcut == "!") {
             return ASTNode::TypeOp::NEGATIVE;
         }
         std::cout << "ERROR: Invalid unary operator.\n";

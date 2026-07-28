@@ -19,6 +19,8 @@ class ASTNode {
         enum TypeNode {
             PROGRAM,
 
+            BLOCK, //scope block, not block from blocking
+
             // Literais
             INT,
             FLOAT,
@@ -71,7 +73,7 @@ class ASTNode {
             // Lógicos
             AND,
             OR,
-            NOT,
+            NOT, //NOT USED, -> NEGATIVE
 
             // Unários
             POSITIVE,
@@ -109,6 +111,13 @@ class ASTNode {
                                     std::unique_ptr<ASTNode> function);       
         static std::unique_ptr<ASTNode> ast_newNULL();                 
         static std::unique_ptr<ASTNode> ast_newProgram(); 
+        static std::unique_ptr<ASTNode> ast_newBlock(); 
+        static std::unique_ptr<ASTNode> ast_newIf(
+            std::unique_ptr<ASTNode> condition,
+            std::unique_ptr<ASTNode> trueBlock,
+            std::unique_ptr<ASTNode> falseBlock
+        ); 
+        
 
         TypeNode getType() const {return type;}
         TypeOp getOp() const {return op;}

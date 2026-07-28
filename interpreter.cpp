@@ -94,7 +94,7 @@ RuntimeValue Interpreter::eval(const ASTNode& node)
             return evalAssign(node);
 
         case ASTNode::UNARY_EXPR:
-            //return evalUni(node);
+            return evalUni(node);
         case ASTNode::FUNCTION_CALL:
             return evalFuncCall(node);
 
@@ -106,6 +106,11 @@ RuntimeValue Interpreter::eval(const ASTNode& node)
             return result;
         }
 
+        case ASTNode::BLOCK:
+            return evalBlock(node);
+
+        case ASTNode::IF:
+            return evalIf(node);
 
         default:
             return RuntimeValue(nullptr);
@@ -250,7 +255,130 @@ RuntimeValue Interpreter::evalBinary(const ASTNode& node) {
             tempright = (bool)right.get<double>();
         } else return RuntimeValue(nullptr);
         return RuntimeValue((bool)(templeft || tempright));}
+    
+    //COMPARISONS
 
+    case ASTNode::EQUAL:
+        if (left.is<int64_t>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<int64_t>() == right.get<int64_t>()));
+        }
+        if (left.is<double>() && right.is<double>()) {
+            return RuntimeValue((bool)(left.get<double>() == right.get<double>()));
+        }
+        if (left.is<bool>() && right.is<bool>()) {
+            return RuntimeValue((bool)(left.get<bool>() == right.get<bool>()));
+        }
+        if (left.is<int64_t>() && right.is<double>()) {
+            return RuntimeValue((bool)((double)left.get<int64_t>() == right.get<double>()));
+        }
+        if (left.is<double>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<double>() == (double)right.get<int64_t>()));
+        }
+        if (left.is<std::string>() && right.is<std::string>()) {
+            return RuntimeValue((bool)(left.get<std::string>() == right.get<std::string>()));
+        }
+        return RuntimeValue((bool)false);
+    case ASTNode::NOT_EQUAL:
+        if (left.is<int64_t>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<int64_t>() != right.get<int64_t>()));
+        }
+        if (left.is<double>() && right.is<double>()) {
+            return RuntimeValue((bool)(left.get<double>() != right.get<double>()));
+        }
+        if (left.is<bool>() && right.is<bool>()) {
+            return RuntimeValue((bool)(left.get<bool>() != right.get<bool>()));
+        }
+        if (left.is<int64_t>() && right.is<double>()) {
+            return RuntimeValue((bool)((double)left.get<int64_t>() != right.get<double>()));
+        }
+        if (left.is<double>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<double>() != (double)right.get<int64_t>()));
+        }
+        if (left.is<std::string>() && right.is<std::string>()) {
+            return RuntimeValue((bool)(left.get<std::string>() != right.get<std::string>()));
+        }
+        return RuntimeValue((bool)true);
+    case ASTNode::LESS:
+        if (left.is<int64_t>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<int64_t>() < right.get<int64_t>()));
+        }
+        if (left.is<double>() && right.is<double>()) {
+            return RuntimeValue((bool)(left.get<double>() < right.get<double>()));
+        }
+        if (left.is<bool>() && right.is<bool>()) {
+            return RuntimeValue((bool)(left.get<bool>() < right.get<bool>()));
+        }
+        if (left.is<int64_t>() && right.is<double>()) {
+            return RuntimeValue((bool)((double)left.get<int64_t>() < right.get<double>()));
+        }
+        if (left.is<double>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<double>() < (double)right.get<int64_t>()));
+        }
+        if (left.is<std::string>() && right.is<std::string>()) {
+            return RuntimeValue((bool)(left.get<std::string>().size() < right.get<std::string>().size()));
+        }
+        return RuntimeValue((bool)false);
+    case ASTNode::LESS_EQUAL:
+        if (left.is<int64_t>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<int64_t>() <= right.get<int64_t>()));
+        }
+        if (left.is<double>() && right.is<double>()) {
+            return RuntimeValue((bool)(left.get<double>() <= right.get<double>()));
+        }
+        if (left.is<bool>() && right.is<bool>()) {
+            return RuntimeValue((bool)(left.get<bool>() <= right.get<bool>()));
+        }
+        if (left.is<int64_t>() && right.is<double>()) {
+            return RuntimeValue((bool)((double)left.get<int64_t>() <= right.get<double>()));
+        }
+        if (left.is<double>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<double>() <= (double)right.get<int64_t>()));
+        }
+        if (left.is<std::string>() && right.is<std::string>()) {
+            return RuntimeValue((bool)(left.get<std::string>().size() <= right.get<std::string>().size()));
+        }
+        return RuntimeValue((bool)false);
+    case ASTNode::GREATER:
+        if (left.is<int64_t>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<int64_t>() > right.get<int64_t>()));
+        }
+        if (left.is<double>() && right.is<double>()) {
+            return RuntimeValue((bool)(left.get<double>() > right.get<double>()));
+        }
+        if (left.is<bool>() && right.is<bool>()) {
+            return RuntimeValue((bool)(left.get<bool>() > right.get<bool>()));
+        }
+        if (left.is<int64_t>() && right.is<double>()) {
+            return RuntimeValue((bool)((double)left.get<int64_t>() > right.get<double>()));
+        }
+        if (left.is<double>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<double>() > (double)right.get<int64_t>()));
+        }
+        if (left.is<std::string>() && right.is<std::string>()) {
+            return RuntimeValue((bool)(left.get<std::string>().size() > right.get<std::string>().size()));
+        }
+        return RuntimeValue((bool)false);
+    case ASTNode::GREATER_EQUAL:
+        if (left.is<int64_t>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<int64_t>() >= right.get<int64_t>()));
+        }
+        if (left.is<double>() && right.is<double>()) {
+            return RuntimeValue((bool)(left.get<double>() >= right.get<double>()));
+        }
+        if (left.is<bool>() && right.is<bool>()) {
+            return RuntimeValue((bool)(left.get<bool>() >= right.get<bool>()));
+        }
+        if (left.is<int64_t>() && right.is<double>()) {
+            return RuntimeValue((bool)((double)left.get<int64_t>() >= right.get<double>()));
+        }
+        if (left.is<double>() && right.is<int64_t>()) {
+            return RuntimeValue((bool)(left.get<double>() >= (double)right.get<int64_t>()));
+        }
+        if (left.is<std::string>() && right.is<std::string>()) {
+            return RuntimeValue((bool)(left.get<std::string>().size() >= right.get<std::string>().size()));
+        }
+        return RuntimeValue((bool)false);
+    
     default:
         return RuntimeValue(nullptr);
     }
@@ -313,4 +441,61 @@ RuntimeValue Interpreter::evalFuncCall(const ASTNode& node) {
     */
 
     return nullptr;
+}
+
+RuntimeValue Interpreter::evalUni(const ASTNode& node) {
+
+    RuntimeValue value = eval(*node.children[0]);
+
+    switch (node.getOp()) {
+        case ASTNode::NEGATIVE:
+        {
+            if (value.is<bool>())
+                return RuntimeValue(!value.get<bool>());
+            else if (value.is<int64_t>())
+                return RuntimeValue(-(value.get<int64_t>()));
+            else if (value.is<double>())
+                return RuntimeValue(-(value.get<double>()));
+            else
+                return RuntimeValue(nullptr);
+        }
+    }
+    return RuntimeValue(nullptr);
+
+}
+
+RuntimeValue Interpreter::evalBlock(const ASTNode& node) {
+    runtime.pushEnvironment();
+
+    RuntimeValue result(nullptr);
+
+    for (const auto& child : node.children) {
+        result = eval(*child);
+    }
+
+    runtime.popEnvironment();
+
+    return result;
+}
+
+RuntimeValue Interpreter::evalIf(const ASTNode& node) {
+
+    RuntimeValue cond = eval(*node.children[0]); //def-left
+
+    /*
+    caso nao seja bool caira sempre para o null pq todas as comparaçoes dao bool 
+    */
+
+    bool result = false; //deixar inicializado por padrao
+    if (cond.is<bool>()) {
+        result = cond.get<bool>();
+    } else {
+        return RuntimeValue(nullptr);
+    }
+    
+    if (result) return eval(*node.children[1]);
+    //se tiver else:
+    if (node.children.size() == 3) return eval(*node.children[2]);
+
+    return RuntimeValue(nullptr); //failsafe
 }

@@ -52,6 +52,7 @@ class Token {
             RETURN,
             RAISE,
             IF,
+            ELSE,
             WHILE,
             FOR,
             UNTIL,
@@ -62,7 +63,13 @@ class Token {
             //patch
             TRUE,
             FALSE,
+
+            //file line to line - noki files
             NEWLINE_or_SEMICOLON,
+
+            //scopes
+            OPEN_SCOPE,
+            CLOSE_SCOPE,
 
             EXIT,
 
@@ -100,13 +107,14 @@ const KEYWORD KEYWORDS[] = {
     {"return",      Token::TokenType::RETURN    },
     {"raise",       Token::TokenType::RAISE     },
     {"if",          Token::TokenType::IF        },
+    {"else",        Token::TokenType::ELSE      },
     {"while",       Token::TokenType::WHILE     },
     {"for",         Token::TokenType::FOR       },
     {"until",       Token::TokenType::UNTIL     },
     {"let",         Token::TokenType::LET       },
-    {"exit",         Token::TokenType::EXIT     },
-    {"true",         Token::TokenType::BOOL     },
-    {"false",         Token::TokenType::BOOL    },
+    {"exit",        Token::TokenType::EXIT      },
+    {"true",        Token::TokenType::BOOL      },
+    {"false",       Token::TokenType::BOOL      },
 };
 
 #endif

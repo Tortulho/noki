@@ -11,7 +11,7 @@
 
 int main(int argc, char const *argv[])
 {
-    std::cout << "Noki REPL v0.2 Tech: 'Running from file'\n";
+    std::cout << "Noki REPL v0.5 Tech: 'ifs'\n";
 
     if (argc == 1) {
         //MODO REPL

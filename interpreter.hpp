@@ -11,5 +11,8 @@ class Interpreter {
         static RuntimeValue evalAssign(const ASTNode& node);
         static RuntimeValue evalVar(const ASTNode& node);
         static RuntimeValue evalFuncCall(const ASTNode& node);
+        static RuntimeValue evalUni(const ASTNode& node);
+        static RuntimeValue evalBlock(const ASTNode& node);
+        static RuntimeValue evalIf(const ASTNode& node);
 
 };

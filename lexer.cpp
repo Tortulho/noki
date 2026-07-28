@@ -73,16 +73,68 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
             pos++;
             continue;
         case '=':
-            // pos++;
-            // if (pos < input.size()) continue;
-            // if (input[pos] == '=') tokens.push_back({"==",2,Token::TokenType::BINARY_OPERATOR});
-            // else pos--;
-            tokens.push_back({"=",1,Token::TokenType::EQUAL});
-            pos++;
-            continue;
-
+            {
+                if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                    tokens.push_back({"==",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                } else {
+                    tokens.push_back({"=",1,Token::EQUAL});
+                    pos++;
+                }
+                continue;
+            }
+        case '!':
+            {
+                if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                    tokens.push_back({"!=",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                } else {
+                    tokens.push_back({"!",1,Token::UNARY_OPERATOR});
+                    pos++;
+                }
+                continue;
+            }
+        case '<':
+            {
+                if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                    tokens.push_back({"<=",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                } else {
+                    tokens.push_back({"<",1,Token::UNARY_OPERATOR});
+                    pos++;
+                }
+                continue;
+            }
+        case '>':
+            {
+                if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                    tokens.push_back({">=",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                } else {
+                    tokens.push_back({">",1,Token::UNARY_OPERATOR});
+                    pos++;
+                }
+                continue;
+            }
+        //LOGICAL OP
+        case '&':
+            {
+                if (pos + 1 < input.size() && input[pos + 1] == '&') {
+                    tokens.push_back({"&&",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                }
+                continue;
+            }
+        case '|':
+            {
+                if (pos + 1 < input.size() && input[pos + 1] == '|') {
+                    tokens.push_back({"||",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                }
+                continue;
+            }
+        
         //IS BINARY OP
-
         case '+':
             tokens.push_back({"+",1,Token::TokenType::BINARY_OPERATOR});
             pos++;
@@ -112,6 +164,16 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
             pos++;
             continue;
 
+        //SCOPING
+        case '{':
+            tokens.push_back({"{", 1, Token::OPEN_SCOPE});
+            pos++;
+            continue;
+        case '}':
+            tokens.push_back({"}", 1, Token::CLOSE_SCOPE});
+            pos++;
+            continue;
+
         //IS STRING
         case '"':
             size_t start = ++pos;
@@ -119,7 +181,8 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
             tokens.push_back({&input[start],pos-start,Token::TokenType::STRING});
             pos++;
             continue;
-        }
+
+        } //END OF SWITCH
 
         //MULTICHAR
         //is number

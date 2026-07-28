@@ -117,6 +117,51 @@ std::unique_ptr<ASTNode> ASTNode::ast_newProgram() {
     return node;
 }
 
+std::unique_ptr<ASTNode> ASTNode::ast_newBlock() {
+    auto node = std::make_unique<ASTNode>();
+    node->type = BLOCK;
+    return node;
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_newIf(
+    std::unique_ptr<ASTNode> condition,
+    std::unique_ptr<ASTNode> trueBlock,
+    std::unique_ptr<ASTNode> falseBlock) {
+    
+        /*
+        if cond {trueblock} else {falseblock}
+        */
+
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = IF;
+
+    node->children.push_back(std::move(condition));
+    node->children.push_back(std::move(trueBlock));
+
+    if (falseBlock) node->children.push_back(std::move(falseBlock));
+
+    return node;
+
+    return node;
+}
+
+/*
+to parser:
+//without else
+return ASTNode::ast_newIf(
+    std::move(condition),
+    std::move(trueBlock),
+    nullptr);
+
+//with else
+return ASTNode::ast_newIf(
+    std::move(condition),
+    std::move(trueBlock),
+    std::move(falseBlock));
+
+*/
+
 const char *typeToString(ASTNode::TypeNode type)
 {
     switch (type)
@@ -192,6 +237,10 @@ void ASTNode::dump(int indent) const
 
         case PROGRAM:
             std::cout << "PROGRAM";
+            break;
+
+        case BLOCK:
+            std::cout << "BLOCK";
             break;
 
         default:
