@@ -23,7 +23,7 @@ say(x), say("Hello World!")
 
 Conditional:
 
-if x > 10 && true {
+if x > 10 && true { # and/or can be used instead of &&/||
 
   say("Hello World!") # This is a comment, you can use ';' if you want to end lines
   
