@@ -16,10 +16,9 @@ FR mode: ./noki filename
 
 Assign/create/modify: x = 10, y = "abc", z = null
 
-Negative numbers: !10, 0-10
+Negative numbers: -10
 
-Create builtin functions like say:
-say(x), say("Hello World!")
+Next update is to allow c/cpp funcs.
 
 Conditional:
 
@@ -34,3 +33,5 @@ else {
 }
 
 Note: Errors can be represented by null or if is an exception it will throw at c++ runtime_error system
+
+When i finish up the cpp functions i will issue a manual to use noki.
