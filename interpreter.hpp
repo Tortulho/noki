@@ -14,5 +14,11 @@ class Interpreter {
         static RuntimeValue evalUni(const ASTNode& node);
         static RuntimeValue evalBlock(const ASTNode& node);
         static RuntimeValue evalIf(const ASTNode& node);
+        static RuntimeValue evalWhile(const ASTNode& node);
+        static RuntimeValue evalImport(const ASTNode& node);
+        static RuntimeValue evalMemberAccess(const ASTNode& node);
+        static RuntimeValue evalVector(const ASTNode& node);
+        static RuntimeValue evalIndex(const ASTNode& node);
+        static RuntimeValue* resolveLValue(const ASTNode& node);
 
 };

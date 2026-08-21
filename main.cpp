@@ -11,7 +11,7 @@
 
 int main(int argc, char const *argv[])
 {
-    std::cout << "Noki REPL v0.5 Tech: 'ifs'\n";
+    std::cout << "Noki REPL v0.9.5 DEBUGMODE Tech: 'Vectors and function type reworking'\n";
 
     if (argc == 1) {
         //MODO REPL
@@ -24,6 +24,7 @@ int main(int argc, char const *argv[])
 
             std::cout << "Result of operation is: ";
             result.print();
+            std::cout << "\n";
         }
     } else {
         //MODO LER DE UM FILE
@@ -38,6 +39,9 @@ int main(int argc, char const *argv[])
 
         // std::cout << "Result of operation: ";
         // result.print();
+
+        std::cout << "Program executed.\n";
+
         return EXIT_SUCCESS;
     }
 }

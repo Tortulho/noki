@@ -100,7 +100,7 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
                     tokens.push_back({"<=",2,Token::BINARY_OPERATOR});
                     pos += 2;
                 } else {
-                    tokens.push_back({"<",1,Token::UNARY_OPERATOR});
+                    tokens.push_back({"<",1,Token::BINARY_OPERATOR});
                     pos++;
                 }
                 continue;
@@ -111,7 +111,7 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
                     tokens.push_back({">=",2,Token::BINARY_OPERATOR});
                     pos += 2;
                 } else {
-                    tokens.push_back({">",1,Token::UNARY_OPERATOR});
+                    tokens.push_back({">",1,Token::BINARY_OPERATOR});
                     pos++;
                 }
                 continue;
@@ -136,29 +136,71 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
         
         //IS BINARY OP
         case '+':
-            tokens.push_back({"+",1,Token::TokenType::BINARY_OPERATOR});
-            pos++;
+        {
+            if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                tokens.push_back({"+=",2,Token::TokenType::BINARY_OPERATOR});
+                pos += 2;
+            } else {
+                tokens.push_back({"+",1,Token::TokenType::BINARY_OPERATOR});
+                pos++;
+            }
             continue;
+        }
         case '-':
-            tokens.push_back({"-",1,Token::TokenType::BINARY_OPERATOR});
-            pos++;
+        {
+            if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                tokens.push_back({"-=",2,Token::TokenType::BINARY_OPERATOR});
+                pos += 2;
+            } else {
+                tokens.push_back({"-",1,Token::TokenType::BINARY_OPERATOR});
+                pos++;
+            }
             continue;
+        }
         case '*':
-            tokens.push_back({"*",1,Token::TokenType::BINARY_OPERATOR});
-            pos++;
+        {
+            if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                tokens.push_back({"*=",2,Token::TokenType::BINARY_OPERATOR});
+                pos += 2;
+            } else {
+                tokens.push_back({"*",1,Token::TokenType::BINARY_OPERATOR});
+                pos++;
+            }
             continue;
+        }
         case '/':
-            tokens.push_back({"/",1,Token::TokenType::BINARY_OPERATOR});
-            pos++;
+        {
+            if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                tokens.push_back({"/=",2,Token::TokenType::BINARY_OPERATOR});
+                pos += 2;
+            } else {
+                tokens.push_back({"/",1,Token::TokenType::BINARY_OPERATOR});
+                pos++;
+            }
             continue;
+        }
         case '%':
-            tokens.push_back({"%",1,Token::TokenType::BINARY_OPERATOR});
-            pos++;
+        {
+            if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                tokens.push_back({"%=",2,Token::TokenType::BINARY_OPERATOR});
+                pos += 2;
+            } else {
+                tokens.push_back({"%",1,Token::TokenType::BINARY_OPERATOR});
+                pos++;
+            }
             continue;
+        }
         case '^':
-            tokens.push_back({"^",1,Token::TokenType::BINARY_OPERATOR});
-            pos++;
+        {
+            if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                tokens.push_back({"^=",2,Token::TokenType::BINARY_OPERATOR});
+                pos += 2;
+            } else {
+                tokens.push_back({"^",1,Token::TokenType::BINARY_OPERATOR});
+                pos++;
+            }
             continue;
+        }
         case ',':
             tokens.push_back({",",1,Token::TokenType::COMMA});
             pos++;
@@ -176,13 +218,37 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
 
         //IS STRING
         case '"':
-            size_t start = ++pos;
-            while (pos < input.size() && input[pos] != '"') pos++;
-            tokens.push_back({&input[start],pos-start,Token::TokenType::STRING});
-            pos++;
-            continue;
+            {
+                size_t start = ++pos;
+                while (pos < input.size() && input[pos] != '"') pos++;
+                tokens.push_back({&input[start],pos-start,Token::TokenType::STRING});
+                pos++;
+                continue;
+            }
 
-        } //END OF SWITCH
+        //for functions
+        case '.':
+            {
+                tokens.push_back({".", 1, Token::DOT});
+                pos++;
+                continue;
+            }
+
+        case '[':
+            {
+                tokens.push_back({"[",1, Token::OPEN_BRACKET});
+                pos++;
+                continue;
+            }
+        case ']':
+            {
+                tokens.push_back({"]",1, Token::CLOSE_BRACKET});
+                pos++;
+                continue;
+            }
+
+        }
+        //END OF SWITCH
 
         //MULTICHAR
         //is number
@@ -216,15 +282,14 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
             //fast patch - ducttape
             if (type == Token::BINARY_OPERATOR) {
                 if (word == "and") tokens.push_back({"&&",2,Token::BINARY_OPERATOR});
-                else tokens.push_back({"||",2,Token::BINARY_OPERATOR});
+                else if (word == "or") tokens.push_back({"||",2,Token::BINARY_OPERATOR});
+                else tokens.push_back({&input[start], pos-start, Token::INVALID});
             } else {          
                 tokens.push_back({&input[start], pos-start, type});
             }
 
             continue;
         }
-
-
     }
 
     tokens.push_back({nullptr,0,Token::TokenType::END_OF_FILE});

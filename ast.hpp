@@ -43,10 +43,17 @@ class ASTNode {
             WHILE,
             FOR,
 
+            IMPORT,
+            MEMBER_ACCESS,
+
             // Declarações
             FUNCTION_DECL,
 
             OPENPAR, CLOSEPAR,
+
+            //vetores
+            VECTOR,
+            INDEX,
 
             INVALID,
         };
@@ -115,10 +122,20 @@ class ASTNode {
         static std::unique_ptr<ASTNode> ast_newIf(
             std::unique_ptr<ASTNode> condition,
             std::unique_ptr<ASTNode> trueBlock,
-            std::unique_ptr<ASTNode> falseBlock
-        ); 
+            std::unique_ptr<ASTNode> falseBlock); 
+        static std::unique_ptr<ASTNode> ast_newWhile(
+            std::unique_ptr<ASTNode> condition,
+            std::unique_ptr<ASTNode> block);
+        static std::unique_ptr<ASTNode> ast_newImport(std::string_view name);
+        static std::unique_ptr<ASTNode> ast_newMemberAccess(
+            std::unique_ptr<ASTNode> object,
+            std::unique_ptr<ASTNode> member);
+        static std::unique_ptr<ASTNode> ast_newVector();
+        static std::unique_ptr<ASTNode> ast_newIndex(
+            std::unique_ptr<ASTNode> object,
+            std::unique_ptr<ASTNode> index);
+        static std::unique_ptr<ASTNode> ast_clone(const ASTNode& node);
         
-
         TypeNode getType() const {return type;}
         TypeOp getOp() const {return op;}
         int64_t getInt() const {return as.integer;}

@@ -35,9 +35,112 @@ std::unique_ptr<ASTNode> Parser::parseStatement() {
     if (current.getType() == (Token::TokenType::EXIT)) exit(EXIT_SUCCESS);
     if (current.getType() == Token::OPEN_SCOPE) return parseBlock();
     if (current.getType() == Token::IF) return parseIf();
+    if (current.getType() == Token::WHILE) return parseWhile();
+    if (current.getType() == Token::IMPORT) return parseImport();
 
     return parseAssignment();
 
+}
+
+std::unique_ptr<ASTNode> Parser::parseMemberAccess()
+{
+    std::unique_ptr<ASTNode> left = parsePrimary();
+
+    if (left == nullptr) return nullptr;
+
+    while (true)
+    {
+        // Member access: object.member
+        if (current.getType() == Token::DOT)
+        {
+            idx_currentToken++;
+
+            if (current.getType() != Token::IDENTIFIER)
+                return nullptr;
+
+            auto member = ASTNode::ast_newVar(current.getString());
+
+            idx_currentToken++;
+
+            left = ASTNode::ast_newMemberAccess(
+                std::move(left),
+                std::move(member)
+            );
+
+            continue;
+        }
+
+        // Function call: expression(...)
+        if (current.getType() == Token::OPENPAR)
+        {
+            idx_currentToken++;
+
+            auto call = ASTNode::ast_newFunctionCall(
+                std::move(left)
+            );
+
+            if (current.getType() == Token::CLOSEPAR)
+            {
+                idx_currentToken++;
+                left = std::move(call);
+                continue;
+            }
+
+            while (true)
+            {
+                auto arg = parseAssignment();
+
+                if (arg == nullptr)
+                    return nullptr;
+
+                call->children.push_back(std::move(arg));
+
+                if (current.getType() == Token::COMMA)
+                {
+                    idx_currentToken++;
+                    continue;
+                }
+
+                if (current.getType() == Token::CLOSEPAR)
+                {
+                    idx_currentToken++;
+                    left = std::move(call);
+                    break;
+                }
+
+                return nullptr;
+            }
+
+            continue;
+        }
+
+        // Index: expression[index]
+        if (current.getType() == Token::OPEN_BRACKET)
+        {
+            idx_currentToken++;
+
+            auto index = parseAssignment();
+
+            if (index == nullptr)
+                return nullptr;
+
+            if (current.getType() != Token::CLOSE_BRACKET)
+                return nullptr;
+
+            idx_currentToken++;
+
+            left = ASTNode::ast_newIndex(
+                std::move(left),
+                std::move(index)
+            );
+
+            continue;
+        }
+
+        break;
+    }
+
+    return left;
 }
 
 std::unique_ptr<ASTNode> Parser::parseIf()
@@ -72,6 +175,24 @@ std::unique_ptr<ASTNode> Parser::parseIf()
         nullptr);
 }
 
+std::unique_ptr<ASTNode> Parser::parseWhile()
+{
+    // consumir while
+    idx_currentToken++;
+
+    auto condition = parseAssignment();
+
+    if (condition == nullptr) return nullptr;
+
+    auto block = parseBlock();
+
+    if (block == nullptr) return nullptr;
+
+    return ASTNode::ast_newWhile(
+        std::move(condition),
+        std::move(block));
+}
+
 std::unique_ptr<ASTNode> Parser::parseBlock()
 {
     if (current.getType() != Token::OPEN_SCOPE) return nullptr;
@@ -101,20 +222,93 @@ std::unique_ptr<ASTNode> Parser::parseBlock()
     return block;
 }
 
-std::unique_ptr<ASTNode> Parser::parseAssignment() {
+// std::unique_ptr<ASTNode> Parser::parseAssignment() {
 
+//     std::unique_ptr<ASTNode> left = parseComp();
+//     if (left == nullptr) return nullptr;
+
+//     if (current.getType() == (Token::TokenType::EQUAL)) {
+//         idx_currentToken++;
+//         std::unique_ptr<ASTNode> value = parseAssignment();
+//         if (value == nullptr) return nullptr;
+//         return ASTNode::ast_newAssignment(std::move(left),std::move(value));
+//     }
+
+//     return left;
+
+// }
+
+std::unique_ptr<ASTNode> Parser::parseAssignment()
+{
     std::unique_ptr<ASTNode> left = parseComp();
-    if (left == nullptr) return nullptr;
 
-    if (current.getType() == (Token::TokenType::EQUAL)) {
+    if (left == nullptr)
+        return nullptr;
+
+    // atribuição normal
+    if (current.getType() == Token::TokenType::EQUAL)
+    {
         idx_currentToken++;
+
         std::unique_ptr<ASTNode> value = parseAssignment();
-        if (value == nullptr) return nullptr;
-        return ASTNode::ast_newAssignment(std::move(left),std::move(value));
+
+        if (value == nullptr)
+            return nullptr;
+
+        return ASTNode::ast_newAssignment(
+            std::move(left),
+            std::move(value)
+        );
+    }
+
+    //patch de fita adesiva
+    // atribuição composta
+    if (current.getType() == Token::TokenType::BINARY_OPERATOR)
+    {
+        std::string_view op = current.getString();
+
+        ASTNode::TypeOp binaryOp = ASTNode::TypeOp::NONE;
+
+        if (op == "+=")
+            binaryOp = ASTNode::TypeOp::ADD;
+        else if (op == "-=")
+            binaryOp = ASTNode::TypeOp::SUB;
+        else if (op == "*=")
+            binaryOp = ASTNode::TypeOp::MUL;
+        else if (op == "/=")
+            binaryOp = ASTNode::TypeOp::DIV;
+        else if (op == "%=")
+            binaryOp = ASTNode::TypeOp::MOD;
+        else if (op == "^=")
+            binaryOp = ASTNode::TypeOp::POW;
+
+        if (binaryOp != ASTNode::TypeOp::NONE)
+        {
+            auto leftCopy = ASTNode::ast_clone(*left);
+
+            idx_currentToken++;
+
+            std::unique_ptr<ASTNode> value =
+                parseAssignment();
+
+            if (value == nullptr)
+                return nullptr;
+
+            auto expression =
+                ASTNode::ast_newBinary(
+                    binaryOp,
+                    std::move(leftCopy),
+                    std::move(value)
+                );
+
+            return ASTNode::ast_newAssignment(
+                std::move(left),
+                std::move(expression)
+            );
+        }
     }
 
     return left;
-
 }
 
 std::unique_ptr<ASTNode> Parser::parseComp() {
@@ -209,17 +403,60 @@ std::unique_ptr<ASTNode> Parser::parsePower()
 
 std::unique_ptr<ASTNode> Parser::parseUnary()
 {
-    ASTNode::TypeOp op = getASTop(current);
+    if (current.getType() == Token::BINARY_OPERATOR)
+    {
+        std::string_view str = current.getString();
 
-    if (op == ASTNode::POSITIVE || op == ASTNode::NEGATIVE) {
+        if (str == "+" || str == "-")
+        {
+            ASTNode::TypeOp op =
+                (str == "+")
+                ? ASTNode::POSITIVE
+                : ASTNode::NEGATIVE;
 
-        //ASTNode::TypeOp op = getASTop(current);
-        idx_currentToken++;
-        auto operand = parseUnary();
-        return ASTNode::ast_newUnary(op,std::move(operand));
+            idx_currentToken++;
+
+            auto operand = parseUnary();
+
+            if (operand == nullptr) return nullptr;
+
+            return ASTNode::ast_newUnary(
+                op,
+                std::move(operand)
+            );
+        }
     }
 
-    return parsePrimary();
+    return parseMemberAccess();
+}
+
+// std::unique_ptr<ASTNode> Parser::parseUnary()
+// {
+//     ASTNode::TypeOp op = getASTop(current);
+
+//     if (op == ASTNode::POSITIVE || op == ASTNode::NEGATIVE) {
+
+//         //ASTNode::TypeOp op = getASTop(current);
+//         idx_currentToken++;
+//         auto operand = parseUnary();
+//         return ASTNode::ast_newUnary(op,std::move(operand));
+//     }
+
+//     return parseMemberAccess();
+// }
+
+std::unique_ptr<ASTNode> Parser::parseImport()
+{
+    idx_currentToken++;
+
+    if (current.getType() != Token::IDENTIFIER)
+        return nullptr;
+
+    std::string_view name = current.getString();
+
+    idx_currentToken++;
+
+    return ASTNode::ast_newImport(name);
 }
 
 std::unique_ptr<ASTNode> Parser::parsePrimary()
@@ -254,10 +491,6 @@ std::unique_ptr<ASTNode> Parser::parsePrimary()
         idx_currentToken++;
         return ASTNode::ast_newString(str);
         break;
-    // case ASTNode::TypeNode::VARIABLE:
-    //     idx_currentToken++;
-    //     return ASTNode::ast_newVar(str);
-    //     break;
     default:
         break;
     }
@@ -278,45 +511,54 @@ std::unique_ptr<ASTNode> Parser::parsePrimary()
     }
     if (current.getType() == Token::IDENTIFIER) {
         idx_currentToken++;
-        if (current.getType() == Token::OPENPAR) {
-            //FUNC-CALL
-            auto call = ASTNode::ast_newFunctionCall(ASTNode::ast_newVar(str));
-            idx_currentToken++;
-            if (current.getType() == Token::CLOSEPAR) {
-                return call;
-            } else {
-                while (true) {
-                    auto arg = parseAssignment();
-                    if (arg == nullptr) return nullptr;
-
-                    call->children.push_back(std::move(arg));
-                    //idx_currentToken++;
-
-                    if (current.getType() == Token::COMMA) {
-                        idx_currentToken++;
-                        continue;
-                    }
-
-                    if (current.getType() == Token::CLOSEPAR) {
-                        idx_currentToken++;
-                        return call;
-                    }
-
-                    return nullptr; // erro de sintaxe
-                }
-            }
-        } else {
-            return ASTNode::ast_newVar(str);
-        }
-
-
+        return ASTNode::ast_newVar(str);
     }
+    if (current.getType() == Token::OPEN_BRACKET)
+    {
+        idx_currentToken++;
+        return parseVector();
+    }
+
+
     idx_currentToken++;
     return nullptr;
 }
 
+std::unique_ptr<ASTNode> Parser::parseVector()
+{
+    auto vector = ASTNode::ast_newVector();
 
+    if (current.getType() == Token::CLOSE_BRACKET)
+    {
+        idx_currentToken++; // ]
+        return vector;
+    }
 
+    while (true)
+    {
+        auto element = parseAssignment();
+
+        if (element == nullptr) return nullptr;
+
+        vector->children.push_back(std::move(element));
+
+        if (current.getType() == Token::COMMA)
+        {
+            idx_currentToken++;
+            continue;
+        }
+
+        if (current.getType() == Token::CLOSE_BRACKET)
+        {
+            idx_currentToken++; // ]
+            return vector;
+        }
+
+        return nullptr;
+    }
+}
+
+//deprecated
 bool Parser::match(Token::TokenType type) {
     if (tokens[idx_currentToken].getType() == type) return true;
     return false;
@@ -357,11 +599,11 @@ ASTNode::TypeOp Parser::getASTop(Token& token) {
             return ASTNode::TypeOp::LESS_EQUAL;
         if (strcut == ">")
             return ASTNode::TypeOp::GREATER;
-        if (strcut == ">")
+        if (strcut == ">=")
             return ASTNode::TypeOp::GREATER_EQUAL;
         if (strcut == "&&")
             return ASTNode::TypeOp::AND;
-        if (strcut == "&&")
+        if (strcut == "||")
             return ASTNode::TypeOp::OR;
         return ASTNode::TypeOp::NONE;
         //TODO: IMPLEMENTAR COMPS AQUI

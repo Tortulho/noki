@@ -8,16 +8,6 @@
 #include "utils.hpp"
 #include <iostream>
 
-
-// class Keyword {
-//     public:
-//         typedef enum {
-
-//         } KEYWORDS;
-// };
-
-
-
 class Token {
 
     public:
@@ -71,6 +61,15 @@ class Token {
             OPEN_SCOPE,
             CLOSE_SCOPE,
 
+            IMPORT,
+            DOT, //FOR FUNCS
+
+            //vetores
+            OPEN_BRACKET,
+            CLOSE_BRACKET,
+
+
+
             EXIT,
 
         } TokenType;
@@ -99,10 +98,10 @@ typedef struct {
 } KEYWORD;
 
 const KEYWORD KEYWORDS[] = {
-    {"int",         Token::TokenType::INT       },
-    {"float",       Token::TokenType::FLOAT     },
-    {"string",      Token::TokenType::STRING    },
-    {"bool",        Token::TokenType::BOOL      },
+    //{"int",         Token::TokenType::INT       },
+    //{"float",       Token::TokenType::FLOAT     },
+    //{"string",      Token::TokenType::STRING    },
+    //{"bool",        Token::TokenType::BOOL      },
     {"null",        Token::TokenType::null      },
     {"return",      Token::TokenType::RETURN    },
     {"raise",       Token::TokenType::RAISE     },
@@ -117,6 +116,7 @@ const KEYWORD KEYWORDS[] = {
     {"false",       Token::TokenType::BOOL      },
     {"and",    Token::TokenType::BINARY_OPERATOR},
     {"or",     Token::TokenType::BINARY_OPERATOR},
+    {"import",     Token::TokenType::IMPORT},
 };
 
 #endif

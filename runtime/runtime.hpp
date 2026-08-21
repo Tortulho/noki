@@ -5,17 +5,17 @@
 #include <string>
 #include "runtimeval.hpp"
 #include "../env/environment.hpp"
+#include "../nokilibs/libmanager.hpp"
+#include "objects/runtimeobjectManager.hpp"
 
 class Runtime
 {
 public:
 
+    RuntimeObjectManager objects;
     Environment global;
     Environment* current;
-
-    Runtime()
-    : global(nullptr),
-      current(&global) {}
+    LibraryManager libraries;
 
     inline void pushEnvironment() {
         current = new Environment(current);
@@ -29,6 +29,16 @@ public:
         current = current->getParent();
         delete old;
     }
+
+private:
+    void initializeLibraries();
+
+public: 
+    Runtime()
+        : global(nullptr),
+        current(&global) {
+            initializeLibraries();
+        }
 
 };
 

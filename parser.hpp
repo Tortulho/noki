@@ -37,6 +37,10 @@ class Parser {
         std::unique_ptr<ASTNode> parseUnary();
         std::unique_ptr<ASTNode> parsePrimary();
         std::unique_ptr<ASTNode> parseFuncCall();
+        std::unique_ptr<ASTNode> parseWhile();
+        std::unique_ptr<ASTNode> parseImport();
+        std::unique_ptr<ASTNode> parseMemberAccess();
+        std::unique_ptr<ASTNode> parseVector();
 
         // Helpers
         bool match(Token::TokenType type);

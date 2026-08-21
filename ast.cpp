@@ -146,6 +146,68 @@ std::unique_ptr<ASTNode> ASTNode::ast_newIf(
     return node;
 }
 
+std::unique_ptr<ASTNode> ASTNode::ast_newWhile(
+    std::unique_ptr<ASTNode> condition,
+    std::unique_ptr<ASTNode> block)
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = ASTNode::WHILE;
+
+    node->children.push_back(std::move(condition));
+    node->children.push_back(std::move(block));
+
+    return node;
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_newImport(std::string_view name)
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = IMPORT;
+    node->as.text = name;
+
+    return node;
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_newMemberAccess(
+    std::unique_ptr<ASTNode> object,
+    std::unique_ptr<ASTNode> member)
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = ASTNode::MEMBER_ACCESS;
+
+    node->children.push_back(std::move(object));
+    node->children.push_back(std::move(member));
+
+    return node;
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_newVector()
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = TypeNode::VECTOR;
+
+    return node;
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_newIndex(
+    std::unique_ptr<ASTNode> object,
+    std::unique_ptr<ASTNode> index)
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = TypeNode::INDEX;
+
+    node->children.push_back(std::move(object));
+    node->children.push_back(std::move(index));
+
+    return node;
+}
+
+
 /*
 to parser:
 //without else
@@ -175,6 +237,7 @@ const char *typeToString(ASTNode::TypeNode type)
     case ASTNode::UNARY_EXPR:    return "UNARY_EXPR";
     case ASTNode::BINARY_EXPR:   return "BINARY_EXPR";
     case ASTNode::FUNCTION_CALL: return "FUNCTION_CALL";
+    case ASTNode::VECTOR:        return "VECTOR";
     default:            return "UNKNOWN";
     }
 }
@@ -243,6 +306,26 @@ void ASTNode::dump(int indent) const
             std::cout << "BLOCK";
             break;
 
+        case TypeNode::WHILE:
+            std::cout << "WHILE";
+            break;
+
+        case TypeNode::IMPORT:
+            std::cout << "IMPORT(" << as.text << ")";
+            break;
+            
+        case MEMBER_ACCESS:
+            std::cout << "MEMBER ACCESS";
+            break;
+        
+        case VECTOR:
+            std::cout << "VECTOR";
+            break;
+
+        case INDEX:
+            std::cout << "INDEX";
+            break;
+
         default:
             std::cout << "UNKNOWN";
             break;
@@ -255,4 +338,21 @@ void ASTNode::dump(int indent) const
     {
         child->dump(indent + 1);
     }
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_clone(const ASTNode& node)
+{
+    auto copy = std::make_unique<ASTNode>();
+
+    copy->type = node.type;
+    copy->op = node.op;
+    copy->as = node.as;
+
+    for (const auto& child : node.children)
+    {
+        if (child != nullptr)
+            copy->children.push_back(ast_clone(*child));
+    }
+
+    return copy;
 }
