@@ -8,7 +8,7 @@
 class Library {
 public:
     std::string name;
-    std::unordered_map<std::string, BuiltinFunc> functions;
+    std::unordered_map<std::string, BuiltinEntry> functions;
 };
 
 #endif

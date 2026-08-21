@@ -63,7 +63,45 @@ RuntimeValue Interpreter::eval(const ASTNode& node)
 
         case ASTNode::STRING:
         {
-            return RuntimeValue(std::string(node.getString()));
+            //simple string formating escape chars
+            std::string value;
+            std::string_view str = node.getString();
+
+            for (size_t i = 0; i < str.size(); ++i) {
+                if (str[i] != '\\') {
+                    value += str[i];
+                    continue;
+                }
+                ++i;
+                if (i >= str.size()) break;
+
+                switch (str[i])
+                {
+                    case 'n':
+                        value += '\n';
+                        break;
+                    case 't':
+                        value += '\t';
+                        break;
+                    case 'b':
+                        if (!value.empty()) value.pop_back();
+                        break;
+                    case 'r':
+                        value += '\r';
+                        break;
+                    case '\\':
+                        value += '\\';
+                        break;
+                    case '"':
+                        value += '"';
+                        break;
+
+                    default:
+                        value += str[i];
+                        break;
+                }
+            }
+            return RuntimeValue(std::move(value));
         }
 
         case ASTNode::BOOL:
@@ -445,39 +483,6 @@ RuntimeValue Interpreter::evalVar(const ASTNode& node)
     return *value;
 }
 
-// RuntimeValue Interpreter::evalFuncCall(const ASTNode& node) {
-
-//     const ASTNode& function = *node.children[0];
-//     std::string name(function.getString());
-
-//     std::vector<RuntimeValue> args;
-//     args.reserve(node.children.size());
-//     for (size_t i = 1; i < node.children.size(); i++) {
-//         args.push_back(eval(*node.children[i]));
-//     }
-
-//     //builtins
-//     BuiltinFunc func = builtin::findFunction(name);
-//     std::cout << "Function name = '" << name << "'\n";
-
-//     if (func != nullptr) {return func(args);}
-
-//     //userfuncs.
-
-//     /*
-//     //inicio
-//     Environment local(runtime.current);
-//     runtime.current = &local;
-    
-//     //codigo
-
-//     runtime.current = local.parent;
-//     //fim
-//     */
-
-//     return nullptr;
-// }
-
 RuntimeValue Interpreter::evalFuncCall(const ASTNode& node)
 {
     if (node.children.empty()) return RuntimeValue(nullptr);
@@ -714,23 +719,75 @@ RuntimeValue Interpreter::evalFuncCall(const ASTNode& node)
         if (it == library->functions.end())
             return RuntimeValue(nullptr);
 
-        std::vector<RuntimeValue> args;
-        args.reserve(node.children.size() - 1);
+        return std::visit(
+            [&](const auto& func) -> RuntimeValue
+            {
+                using T = std::decay_t<decltype(func)>;
 
-        for (size_t i = 1;
-            i < node.children.size();
-            ++i)
-        {
-            args.push_back(
-                eval(*node.children[i])
-            );
-        }
+                if constexpr (
+                    std::is_same_v<T, BuiltinFunc>
+                )
+                {
+                    std::vector<RuntimeValue> args;
+                    args.reserve(node.children.size() - 1);
 
-        return it->second(args);
-        }
+                    for (size_t i = 1;
+                        i < node.children.size();
+                        ++i)
+                    {
+                        args.push_back(
+                            eval(*node.children[i])
+                        );
+                    }
 
-    return RuntimeValue(nullptr);
-}
+                    return func(args);
+                }
+                else if constexpr (
+                    std::is_same_v<T, BuiltinMutFunc>
+                )
+                {
+                    std::vector<RuntimeValue> temporaries;
+                    std::vector<RuntimeValue*> args;
+
+                    temporaries.reserve(
+                        node.children.size() - 1
+                    );
+
+                    args.reserve(
+                        node.children.size() - 1
+                    );
+
+                    for (size_t i = 1;
+                        i < node.children.size();
+                        ++i)
+                    {
+                        RuntimeValue* reference =
+                            resolveLValue(
+                                *node.children[i]
+                            );
+
+                        if (reference != nullptr)
+                        {
+                            args.push_back(reference);
+                        }
+                        else
+                        {
+                            temporaries.push_back(
+                                eval(*node.children[i])
+                            );
+
+                            args.push_back(
+                                &temporaries.back()
+                            );
+                        }
+                    }
+
+                    return func(args);
+                }
+            },
+            it->second.function
+        );
+} }
 
 RuntimeValue Interpreter::evalUni(const ASTNode& node) {
 
@@ -818,27 +875,36 @@ RuntimeValue Interpreter::evalImport(const ASTNode& node)
 
 RuntimeValue Interpreter::evalMemberAccess(const ASTNode& node)
 {
-    if (node.children.size() != 2) return RuntimeValue(nullptr);
+    if (node.children.size() != 2)
+        return RuntimeValue(nullptr);
 
     const ASTNode& object = *node.children[0];
     const ASTNode& member = *node.children[1];
 
-    if (object.getType() != ASTNode::VARIABLE) return RuntimeValue(nullptr);
+    if (object.getType() != ASTNode::VARIABLE)
+        return RuntimeValue(nullptr);
 
-    if (member.getType() != ASTNode::VARIABLE) return RuntimeValue(nullptr);
+    if (member.getType() != ASTNode::VARIABLE)
+        return RuntimeValue(nullptr);
 
     std::string libraryName(object.getString());
     std::string memberName(member.getString());
 
-    Library* library = runtime.libraries.findLibrary(libraryName);
+    Library* library =
+        runtime.libraries.findLibrary(libraryName);
 
-    if (library == nullptr) return RuntimeValue(nullptr);
+    if (library == nullptr)
+        return RuntimeValue(nullptr);
+
+    if (!runtime.libraries.isImported(libraryName))
+        return RuntimeValue(nullptr);
 
     auto it = library->functions.find(memberName);
 
-    if (it == library->functions.end()) return RuntimeValue(nullptr);
+    if (it == library->functions.end())
+        return RuntimeValue(nullptr);
 
-    return RuntimeValue(reinterpret_cast<void*>(it->second));
+    return RuntimeValue(nullptr);
 }
 
 RuntimeValue Interpreter::evalVector(const ASTNode& node)
