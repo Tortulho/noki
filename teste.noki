@@ -1,5 +1,0 @@
-if true {
-    x = 2
-} 
-say("Result is:")
-say(x)
