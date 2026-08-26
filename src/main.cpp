@@ -11,7 +11,7 @@
 
 int main(int argc, char const *argv[])
 {
-    std::cout << "Noki REPL v0.12 DEBUGMODE Tech: 'Flow control state - RETURN - CONTINUE - BREAK'\n";
+    std::cout << "Noki REPL v0.13.1 DEBUGMODE Tech: 'External NOKI libs'\n";
 
     if (argc == 1) {
         //MODO REPL

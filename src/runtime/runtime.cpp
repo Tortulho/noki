@@ -7,5 +7,7 @@ Runtime runtime;
 
 void Runtime::initializeLibraries()
 {
-    libraries.registerLibrary(dummyLibrary);
+    libraries.registerLibrary(
+        std::move(dummyLibrary)
+    );
 }

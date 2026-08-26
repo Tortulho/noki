@@ -1,0 +1,7 @@
+println("MATH LOADED")
+
+x = 100
+
+function getX() {
+    return x
+}

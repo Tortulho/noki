@@ -29,6 +29,7 @@ SRC = \
     $(SRC_DIR)/runtime/objects/runtimefunc.cpp \
     $(SRC_DIR)/env/environment.cpp \
     $(SRC_DIR)/lib/libmanager.cpp \
+    $(SRC_DIR)/lib/nokiModule.cpp \
     $(LIB_DIR)/libcpp/dummy/dummy.cpp
 
 DEBUG_DIR = bin/debug

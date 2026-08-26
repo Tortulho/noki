@@ -8,6 +8,7 @@
 
 #include "lib.hpp"
 #include "libinitializer.hpp"
+#include "nokiModule.hpp"
 
 class LibraryManager
 {
@@ -15,7 +16,7 @@ public:
 
     explicit LibraryManager(RuntimeObjectManager& objectManager);
 
-    void registerLibrary(const Library& library); //regista uma biblioteca
+    void registerLibrary(Library library); //regista uma biblioteca
 
     Library*        findLibrary(const std::string& name); //encontra a lib e permite fazer a consulta das funçoes respetivas
     const Library*  findLibrary(const std::string& name) const;
@@ -24,6 +25,9 @@ public:
 
     bool importLibrary(const std::string& name);
     bool isImported(const std::string& name) const;
+
+    std::filesystem::path resolveNokiLibrary(const std::string& name) const;
+    bool importNokiLibrary(const std::string& name);
 
 private:
 

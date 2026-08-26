@@ -382,7 +382,9 @@ void ASTNode::dump(int indent) const
                     << " type="
                     << parameter.getType()
                     << " const="
-                    << parameter.isConst();
+                    << parameter.isConst()
+                    << " mutable="
+                    << parameter.isMut();
             }
         }
 

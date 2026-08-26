@@ -218,3 +218,14 @@ namespace dummy
 
 }
 
+Library dummyLibrary
+{
+    "dummy",
+    {
+        {"hello", BuiltinEntry{dummy::hello}},
+        {"create", BuiltinEntry{dummy::create}},
+        //{"id", BuiltinEntry{dummy::id}}
+    },
+    {},
+    dummy::createInitializer
+};

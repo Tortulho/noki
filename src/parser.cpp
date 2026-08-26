@@ -58,71 +58,59 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
     {
         while (true)
         {
-            bool isConst = false;
+            FunctionParameterMode parameterMode =
+                FunctionParameterMode::NORMAL;
+
             ASTNode::TypeNode parameterType =
                 ASTNode::TypeNode::ANYVALUE;
 
             std::string parameterName;
 
-            // const
-            if (current.getType() == Token::CONST)
+            /*
+             * Qualificador:
+             *
+             * mut
+             * const
+             */
+            if (current.getType() == Token::MUTABLE)
             {
-                isConst = true;
+                parameterMode =
+                    FunctionParameterMode::MUT;
+
+                idx_currentToken++;
+            }
+            else if (current.getType() == Token::CONST)
+            {
+                parameterMode =
+                    FunctionParameterMode::CONST;
+
+                idx_currentToken++;
+            }
+
+            /*
+             * const: a
+             * mut: a
+             */
+            if (current.getType() == Token::COLON)
+            {
                 idx_currentToken++;
 
-                // const: a
-                if (current.getType() == Token::COLON)
-                {
-                    idx_currentToken++;
+                if (current.getType() != Token::IDENTIFIER)
+                    return nullptr;
 
-                    if (current.getType() != Token::IDENTIFIER)
-                        return nullptr;
+                parameterName =
+                    std::string(current.getString());
 
-                    parameterName =
-                        std::string(current.getString());
-
-                    idx_currentToken++;
-                }
-                // const int: a
-                else
-                {
-                    if (current.getType() != Token::IDENTIFIER)
-                        return nullptr;
-
-                    std::string_view typeName =
-                        current.getString();
-
-                    if (typeName == "int")
-                        parameterType = ASTNode::TypeNode::INT;
-                    else if (typeName == "float")
-                        parameterType = ASTNode::TypeNode::FLOAT;
-                    else if (typeName == "string")
-                        parameterType = ASTNode::TypeNode::STRING;
-                    else if (typeName == "bool")
-                        parameterType = ASTNode::TypeNode::BOOL;
-                    else if (typeName == "vector")
-                        parameterType = ASTNode::TypeNode::VECTOR;
-                    else
-                        return nullptr;
-
-                    idx_currentToken++;
-
-                    if (current.getType() != Token::COLON)
-                        return nullptr;
-
-                    idx_currentToken++;
-
-                    if (current.getType() != Token::IDENTIFIER)
-                        return nullptr;
-
-                    parameterName =
-                        std::string(current.getString());
-
-                    idx_currentToken++;
-                }
+                idx_currentToken++;
             }
             else
             {
+                /*
+                 * a
+                 * int: a
+                 * mut int: a
+                 * const int: a
+                 */
                 if (current.getType() != Token::IDENTIFIER)
                     return nullptr;
 
@@ -135,15 +123,20 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
                 if (current.getType() == Token::COLON)
                 {
                     if (first == "int")
-                        parameterType = ASTNode::TypeNode::INT;
+                        parameterType =
+                            ASTNode::TypeNode::INT;
                     else if (first == "float")
-                        parameterType = ASTNode::TypeNode::FLOAT;
+                        parameterType =
+                            ASTNode::TypeNode::FLOAT;
                     else if (first == "string")
-                        parameterType = ASTNode::TypeNode::STRING;
+                        parameterType =
+                            ASTNode::TypeNode::STRING;
                     else if (first == "bool")
-                        parameterType = ASTNode::TypeNode::BOOL;
+                        parameterType =
+                            ASTNode::TypeNode::BOOL;
                     else if (first == "vector")
-                        parameterType = ASTNode::TypeNode::VECTOR;
+                        parameterType =
+                            ASTNode::TypeNode::VECTOR;
                     else
                         return nullptr;
 
@@ -160,14 +153,28 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
                 // a
                 else
                 {
-                    parameterName = std::string(first);
+                    /*
+                     * Se tivermos um qualificador, o primeiro
+                     * identifier tem obrigatoriamente de ser um
+                     * tipo.
+                     */
+                    if (
+                        parameterMode !=
+                        FunctionParameterMode::NORMAL
+                    )
+                    {
+                        return nullptr;
+                    }
+
+                    parameterName =
+                        std::string(first);
                 }
             }
 
             parameters.emplace_back(
                 std::move(parameterName),
                 parameterType,
-                isConst
+                parameterMode
             );
 
             if (current.getType() == Token::COMMA)

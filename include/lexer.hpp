@@ -76,6 +76,7 @@ class Token {
 
             FUNCTION,
             CONST,
+            MUTABLE,
 
             EXIT,
 
@@ -130,6 +131,8 @@ const KEYWORD KEYWORDS[] = {
     {"const",       Token::TokenType::CONST         },
     {"continue",       Token::TokenType::CONTINUE   },
     {"break",       Token::TokenType::BREAK         },
+    {"mut",       Token::TokenType::MUTABLE         },
+    {"mutable",       Token::TokenType::MUTABLE     },
 };
 
 #endif

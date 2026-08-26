@@ -10,6 +10,13 @@
 
 class ASTNode;
 
+enum class FunctionParameterMode
+{
+    NORMAL,
+    MUT,
+    CONST
+};
+
 class FunctionParameter
 {
 public:
@@ -17,11 +24,11 @@ public:
     FunctionParameter(
         std::string name,
         TypeNode type,
-        bool isConst
+        FunctionParameterMode mode
     )
         : name(std::move(name)),
           type(type),
-          constParameter(isConst)
+          mode(mode)
     {}
 
     const std::string& getName() const noexcept
@@ -34,16 +41,26 @@ public:
         return type;
     }
 
+    FunctionParameterMode getMode() const noexcept
+    {
+        return mode;
+    }
+
     bool isConst() const noexcept
     {
-        return constParameter;
+        return mode == FunctionParameterMode::CONST;
+    }
+
+    bool isMut() const noexcept
+    {
+        return mode == FunctionParameterMode::MUT;
     }
 
 private:
 
     std::string name;
     TypeNode type;
-    bool constParameter;
+    FunctionParameterMode mode;
 };
 
 class NokiFunction
