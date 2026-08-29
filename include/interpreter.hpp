@@ -36,5 +36,6 @@ class Interpreter {
         static EvalResult  evalIndex(const ASTNode& node);
         static RuntimeValue* resolveLValue(const ASTNode& node);
         static EvalResult  evalFuncDecl(const ASTNode& node);
+        static EvalResult evalMove(const ASTNode& node);
 
 };

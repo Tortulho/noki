@@ -26,6 +26,8 @@ class Token {
             DIV,
             MOD,
             POW,
+            
+            MOVE,
 
             OPENPAR, CLOSEPAR,
             COMMA,

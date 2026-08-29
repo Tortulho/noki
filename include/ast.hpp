@@ -100,6 +100,10 @@ class ASTNode {
             std::unique_ptr<ASTNode> name,
             std::vector<FunctionParameter> parameters,
             std::unique_ptr<ASTNode> body);
+        static std::unique_ptr<ASTNode> ast_newMove(
+            std::unique_ptr<ASTNode> variable,
+            std::unique_ptr<ASTNode> expression
+        );
         
         TypeNode getType() const {return type;}
         TypeOp getOp() const {return op;}

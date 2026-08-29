@@ -8,6 +8,7 @@
 #include "runtimeobject.hpp"
 #include "runtimefunc.hpp"
 #include "ast.hpp"
+#include "runtimevalTypeID.hpp"
 
 class RuntimeValue_Vector;
 
@@ -15,7 +16,7 @@ using RTValue = std::variant<
     int64_t,
     double,
     bool,
-    void*,
+    void*, //for null
     std::string,
     std::unique_ptr<RuntimeObject>,
     std::unique_ptr<RuntimeValue_Vector>
@@ -104,37 +105,62 @@ class RuntimeValue {
 
         static bool runtimeValueToBool(const RuntimeValue& value);
 
-    //VECTOR RELATED FUNCS
-    bool isVector() const
-    {
-        return std::holds_alternative<
-            std::unique_ptr<RuntimeValue_Vector>
-        >(value);
-    }
+        //VECTOR RELATED FUNCS
+        bool isVector() const
+        {
+            return std::holds_alternative<
+                std::unique_ptr<RuntimeValue_Vector>
+            >(value);
+        }
 
-    RuntimeValue_Vector* getVector()
-    {
-        auto& vector =
-            std::get<std::unique_ptr<RuntimeValue_Vector>>(value);
+        RuntimeValue_Vector* getVector()
+        {
+            auto& vector =
+                std::get<std::unique_ptr<RuntimeValue_Vector>>(value);
 
-        return vector.get();
-    }
+            return vector.get();
+        }
 
-    const RuntimeValue_Vector* getVector() const
-    {
-        const auto& vector =
-            std::get<std::unique_ptr<RuntimeValue_Vector>>(value);
+        const RuntimeValue_Vector* getVector() const
+        {
+            const auto& vector =
+                std::get<std::unique_ptr<RuntimeValue_Vector>>(value);
 
-        return vector.get();
-    }
+            return vector.get();
+        }
 
-    //COMPARISONS
+        //COMPARISONS
 
-    static bool comp(
-        const RuntimeValue& left,
-        const RuntimeValue& right,
-        ASTNode::TypeOp op
-    );
+        static bool comp(
+            const RuntimeValue& left,
+            const RuntimeValue& right,
+            ASTNode::TypeOp op
+        );
+
+        RuntimeValueTypeID getTypeID() const
+        {
+            if (is<int64_t>())
+                return RuntimeValueTypeID::INT;
+
+            if (is<double>())
+                return RuntimeValueTypeID::FLOAT;
+
+            if (is<bool>())
+                return RuntimeValueTypeID::BOOL;
+
+            if (is<std::string>())
+                return RuntimeValueTypeID::STRING;
+
+            if (isVector())
+                return RuntimeValueTypeID::VECTOR;
+
+            if (is<void*>())
+                return RuntimeValueTypeID::NULL_VALUE;
+
+            throw std::runtime_error(
+                "RuntimeValue does not contain an intrinsic value type."
+            );
+        }
 
 
 };

@@ -96,8 +96,16 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
             }
         case '<':
             {
-                if (pos + 1 < input.size() && input[pos + 1] == '=') {
+                if (pos + 3 < input.size() && input[pos + 1] == '<' &&
+                    input[pos + 2] == '=' && input[pos + 3] == '=') {
+
+                    tokens.push_back({"<<==",4,Token::MOVE});
+                    pos += 4;
+                } else if (pos + 1 < input.size() && input[pos + 1] == '=') {
                     tokens.push_back({"<=",2,Token::BINARY_OPERATOR});
+                    pos += 2;
+                } else if (pos + 1 < input.size() && input[pos + 1] == '-') {
+                    tokens.push_back({"<-",2,Token::MOVE});
                     pos += 2;
                 } else {
                     tokens.push_back({"<",1,Token::BINARY_OPERATOR});

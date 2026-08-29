@@ -34,6 +34,7 @@ enum TypeNode {
     FOR,
     CONTINUE,
     BREAK,
+    MOVE,
 
     IMPORT,
     MEMBER_ACCESS,

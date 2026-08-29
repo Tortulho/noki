@@ -96,6 +96,27 @@ std::unique_ptr<ASTNode> ASTNode::ast_newAssignment(
     return node;
 }
 
+std::unique_ptr<ASTNode> ASTNode::ast_newMove(
+    std::unique_ptr<ASTNode> variable,
+    std::unique_ptr<ASTNode> expression
+)
+{
+    std::unique_ptr<ASTNode> node =
+        std::make_unique<ASTNode>();
+
+    node->type = TypeNode::MOVE;
+
+    node->children.push_back(
+        std::move(variable)
+    );
+
+    node->children.push_back(
+        std::move(expression)
+    );
+
+    return node;
+}
+
 std::unique_ptr<ASTNode> ASTNode::ast_newFunctionCall(
     std::unique_ptr<ASTNode> function)
 {
@@ -390,6 +411,10 @@ void ASTNode::dump(int indent) const
 
         break;
     }
+
+    case TypeNode::MOVE:
+        std::cout << "MOVE";
+        break;
 
     default:
         std::cout << "UNKNOWN";

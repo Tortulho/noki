@@ -182,3 +182,21 @@ void Environment::createNokiFunction(
 {
     nokiFunctions[name] = std::move(function);
 }
+
+bool Environment::removeVar(
+    const std::string& name
+)
+{
+    auto it = variables.find(name);
+
+    if (it != variables.end())
+    {
+        variables.erase(it);
+        return true;
+    }
+
+    if (parent)
+        return parent->removeVar(name);
+
+    return false;
+}

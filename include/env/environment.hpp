@@ -27,6 +27,7 @@ class Environment
         );
 
         bool assignVar(const std::string& name, RuntimeValue value);
+        bool removeVar(const std::string& name);
 
         bool existLocal(const std::string& name) const;
         bool exist(const std::string& name) const;

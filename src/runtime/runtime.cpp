@@ -1,13 +1,27 @@
 #include "runtime.hpp"
-#include "dummy.hpp"
+
+//#include "dummy.hpp"
+#include "file.hpp"
+#include "strings.hpp"
+#include "vectors.hpp"
 
 Runtime runtime;
 
-// REGISTER LIBS HERE
-
 void Runtime::initializeLibraries()
 {
+    // libraries.registerLibrary(
+    //     createDummyLibrary()
+    // );
+
     libraries.registerLibrary(
-        std::move(dummyLibrary)
+        createFileLibrary()
+    );
+
+    libraries.registerLibrary(
+        createStringLibrary()
+    );
+
+    libraries.registerLibrary(
+        createVectorLibrary()
     );
 }

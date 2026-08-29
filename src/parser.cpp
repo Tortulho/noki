@@ -478,6 +478,20 @@ std::unique_ptr<ASTNode> Parser::parseAssignment()
         );
     }
 
+    if (current.getType() == Token::TokenType::MOVE)
+    {
+        idx_currentToken++;
+
+        std::unique_ptr<ASTNode> value = parseAssignment();
+
+        if (value == nullptr) return nullptr;
+
+        return ASTNode::ast_newMove(
+            std::move(left),
+            std::move(value)
+        );
+    }
+
     //patch de fita adesiva
     // atribuição composta
     if (current.getType() == Token::TokenType::BINARY_OPERATOR)

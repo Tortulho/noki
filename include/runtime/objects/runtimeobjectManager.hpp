@@ -7,11 +7,14 @@
 #include <unordered_map>
 #include "runtimeobjectType.hpp"
 #include "runtimeobject.hpp"
+#include "runtimevalType.hpp"
 #include <type_traits>
 
 class RuntimeObjectManager
 {
 public:
+
+    RuntimeObjectManager();
 
     RuntimeObjectTypeID registerType(const std::string& name);
     bool unregisterType(RuntimeObjectTypeID id);
@@ -51,6 +54,22 @@ public:
         RuntimeObjectTypeID typeID,
         Args&&... args);
 
+    RuntimeValueType* findValueType(
+        RuntimeValueTypeID id
+    );
+
+    const RuntimeValueType* findValueType(
+        RuntimeValueTypeID id
+    ) const;
+
+    void registerValueType(
+        RuntimeValueTypeID id
+    );
+
+    bool existsValueType(
+        RuntimeValueTypeID id
+    ) const;
+
 private:
 
     // Type Registry
@@ -74,6 +93,12 @@ private:
         RuntimeObjectInstanceID,
         RuntimeObject*
     > instances;
+
+    std::unordered_map<
+        RuntimeValueTypeID,
+        RuntimeValueType
+    > valueTypes;
+
 };
 
 template<typename T, typename... Args>

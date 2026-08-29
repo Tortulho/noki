@@ -1,6 +1,16 @@
 #include "runtimeobjectManager.hpp"
 #include <stdexcept>
 
+RuntimeObjectManager::RuntimeObjectManager()
+{
+        registerValueType(RuntimeValueTypeID::INT);
+        registerValueType(RuntimeValueTypeID::FLOAT);
+        registerValueType(RuntimeValueTypeID::BOOL);
+        registerValueType(RuntimeValueTypeID::STRING);
+        registerValueType(RuntimeValueTypeID::NULL_VALUE);
+        registerValueType(RuntimeValueTypeID::VECTOR);
+}
+
 RuntimeObjectTypeID RuntimeObjectManager::registerType(
     const std::string& name)
 {
@@ -209,3 +219,54 @@ unregisterType(id)
               ├── remove type
               └── true
 */
+
+void RuntimeObjectManager::registerValueType(
+    RuntimeValueTypeID id
+)
+{
+    auto [it, inserted] =
+        valueTypes.emplace(
+            id,
+            RuntimeValueType(id)
+        );
+
+    if (!inserted)
+    {
+        throw std::runtime_error(
+            "Critical error: runtime value type is already registered."
+        );
+    }
+}
+
+RuntimeValueType*
+RuntimeObjectManager::findValueType(
+    RuntimeValueTypeID id
+)
+{
+    auto it = valueTypes.find(id);
+
+    if (it == valueTypes.end())
+        return nullptr;
+
+    return &it->second;
+}
+
+const RuntimeValueType*
+RuntimeObjectManager::findValueType(
+    RuntimeValueTypeID id
+) const
+{
+    auto it = valueTypes.find(id);
+
+    if (it == valueTypes.end())
+        return nullptr;
+
+    return &it->second;
+}
+
+bool RuntimeObjectManager::existsValueType(
+    RuntimeValueTypeID id
+) const
+{
+    return valueTypes.find(id) != valueTypes.end();
+}

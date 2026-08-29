@@ -161,6 +161,8 @@ EvalResult Interpreter::eval(const ASTNode& node)
             return evalIndex(node);
         case TypeNode::FUNCTION_DECLARATION:
             return evalFuncDecl(node);
+        case TypeNode::MOVE:
+            return evalMove(node);
 
         case TypeNode::BREAK:
             return {
@@ -456,7 +458,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                 std::visit(
                     [&](const auto& func) -> RuntimeValue
                     {
-                        using T = std::decay_t<decltype(func)>;
+                        using T =
+                            std::decay_t<decltype(func)>;
 
                         if constexpr (
                             std::is_same_v<T, BuiltinFunc>
@@ -519,7 +522,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
 
                                 if (reference != nullptr)
                                 {
-                                    args.push_back(reference);
+                                    args.push_back(
+                                        reference
+                                    );
                                 }
                                 else
                                 {
@@ -538,7 +543,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                     }
 
                                     temporaries.push_back(
-                                        std::move(argument.value)
+                                        std::move(
+                                            argument.value
+                                        )
                                     );
 
                                     args.push_back(
@@ -850,512 +857,171 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
     }
 
     /*
- * Função pertencente a uma biblioteca ou método de objeto.
- */
-if (target.getType() == TypeNode::MEMBER_ACCESS)
-{
-    if (target.children.size() != 2)
-    {
-        return {
-            RuntimeValue(nullptr),
-            FlowControl::NONE
-        };
-    }
-
-    const ASTNode& objectNode = *target.children[0];
-    const ASTNode& memberNode = *target.children[1];
-
-    if (memberNode.getType() != TypeNode::VARIABLE)
-    {
-        return {
-            RuntimeValue(nullptr),
-            FlowControl::NONE
-        };
-    }
-
-    std::string functionName(
-        memberNode.getString()
-    );
-
-    /*
-     * Primeiro verificamos se o receiver é uma Library Noki.
+     * Função pertencente a uma biblioteca,
+     * método de RuntimeObject ou método de RuntimeValue.
      */
-    if (objectNode.getType() == TypeNode::VARIABLE)
+    if (target.getType() == TypeNode::MEMBER_ACCESS)
     {
-        std::string libraryName(
-            objectNode.getString()
+        if (target.children.size() != 2)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::NONE
+            };
+        }
+
+        const ASTNode& objectNode =
+            *target.children[0];
+
+        const ASTNode& memberNode =
+            *target.children[1];
+
+        if (memberNode.getType() != TypeNode::VARIABLE)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::NONE
+            };
+        }
+
+        const std::string functionName(
+            memberNode.getString()
         );
 
-        Library* library =
-            runtime.libraries.findLibrary(
-                libraryName
+        /*
+         * Primeiro verificamos se o receiver é uma Library Noki.
+         */
+        if (objectNode.getType() == TypeNode::VARIABLE)
+        {
+            const std::string libraryName(
+                objectNode.getString()
             );
 
-        if (library != nullptr)
-        {
-            auto moduleIt =
-                library->nokiModules.find(
+            Library* library =
+                runtime.libraries.findLibrary(
                     libraryName
                 );
 
-            if (moduleIt != library->nokiModules.end())
+            if (library != nullptr)
             {
-                NokiModule* module =
-                    moduleIt->second.get();
+                auto moduleIt =
+                    library->nokiModules.find(
+                        libraryName
+                    );
 
-                if (module == nullptr)
+                if (moduleIt != library->nokiModules.end())
                 {
-                    return {
-                        RuntimeValue(nullptr),
-                        FlowControl::NONE
-                    };
-                }
+                    NokiModule* module =
+                        moduleIt->second.get();
 
-                Environment* moduleEnvironment =
-                    module->getEnvironment();
-
-                if (moduleEnvironment == nullptr)
-                {
-                    throw std::runtime_error(
-                        "Noki library '" +
-                        libraryName +
-                        "' has no environment."
-                    );
-                }
-
-                NokiFunction* nokiFunction =
-                    moduleEnvironment->findNokiFunction(
-                        functionName
-                    );
-
-                if (nokiFunction != nullptr)
-                {
-                    const auto& parameters =
-                        nokiFunction->getParameters();
-
-                    const size_t argumentCount =
-                        node.children.size() - 1;
-
-                    if (argumentCount != parameters.size())
-                    {
-                        throw std::runtime_error(
-                            "Noki function '" +
-                            functionName +
-                            "' expected " +
-                            std::to_string(parameters.size()) +
-                            " arguments, got " +
-                            std::to_string(argumentCount) +
-                            "."
-                        );
-                    }
-
-                    /*
-                     * Os argumentos pertencem ao ambiente do caller.
-                     */
-                    std::vector<RuntimeValue> argumentValues;
-
-                    argumentValues.resize(
-                        argumentCount
-                    );
-
-                    std::vector<RuntimeValue*> argumentReferences;
-
-                    argumentReferences.resize(
-                        argumentCount,
-                        nullptr
-                    );
-
-                    for (size_t i = 0;
-                         i < parameters.size();
-                         ++i)
-                    {
-                        const FunctionParameter& parameter =
-                            parameters[i];
-
-                        const ASTNode& argumentNode =
-                            *node.children[i + 1];
-
-                        if (
-                            parameter.getMode() ==
-                            FunctionParameterMode::MUT
-                        )
-                        {
-                            RuntimeValue* reference =
-                                resolveLValue(
-                                    argumentNode
-                                );
-
-                            if (reference == nullptr)
-                            {
-                                throw std::runtime_error(
-                                    "Noki function '" +
-                                    functionName +
-                                    "' parameter '" +
-                                    parameter.getName() +
-                                    "' requires a mutable lvalue."
-                                );
-                            }
-
-                            argumentReferences[i] =
-                                reference;
-                        }
-                        else
-                        {
-                            EvalResult argument =
-                                eval(argumentNode);
-
-                            if (
-                                argument.control !=
-                                FlowControl::NONE
-                            )
-                            {
-                                throw std::runtime_error(
-                                    "Invalid control flow in "
-                                    "function argument."
-                                );
-                            }
-
-                            argumentValues[i] =
-                                std::move(argument.value);
-                        }
-                    }
-
-                    /*
-                     * Validar os tipos dos parâmetros.
-                     */
-                    for (size_t i = 0;
-                         i < parameters.size();
-                         ++i)
-                    {
-                        ASTNode::TypeNode expectedType =
-                            parameters[i].getType();
-
-                        bool valid = false;
-
-                        RuntimeValue* value = nullptr;
-
-                        if (
-                            parameters[i].getMode() ==
-                            FunctionParameterMode::MUT
-                        )
-                        {
-                            value =
-                                argumentReferences[i];
-                        }
-                        else
-                        {
-                            value =
-                                &argumentValues[i];
-                        }
-
-                        switch (expectedType)
-                        {
-                            case TypeNode::ANYVALUE:
-                                valid = true;
-                                break;
-
-                            case TypeNode::INT:
-                                valid =
-                                    value->is<int64_t>();
-                                break;
-
-                            case TypeNode::FLOAT:
-                                valid =
-                                    value->is<double>();
-                                break;
-
-                            case TypeNode::BOOL:
-                                valid =
-                                    value->is<bool>();
-                                break;
-
-                            case TypeNode::STRING:
-                                valid =
-                                    value->is<std::string>();
-                                break;
-
-                            case TypeNode::VECTOR:
-                                valid =
-                                    value->isVector();
-                                break;
-
-                            default:
-                                valid = false;
-                                break;
-                        }
-
-                        if (!valid)
-                        {
-                            std::string expectedTypeName;
-
-                            switch (expectedType)
-                            {
-                                case TypeNode::ANYVALUE:
-                                    expectedTypeName = "any";
-                                    break;
-
-                                case TypeNode::INT:
-                                    expectedTypeName = "int";
-                                    break;
-
-                                case TypeNode::FLOAT:
-                                    expectedTypeName = "float";
-                                    break;
-
-                                case TypeNode::BOOL:
-                                    expectedTypeName = "bool";
-                                    break;
-
-                                case TypeNode::STRING:
-                                    expectedTypeName = "string";
-                                    break;
-
-                                case TypeNode::VECTOR:
-                                    expectedTypeName = "vector";
-                                    break;
-
-                                default:
-                                    expectedTypeName = "unknown";
-                                    break;
-                            }
-
-                            throw std::runtime_error(
-                                "Noki function '" +
-                                functionName +
-                                "' parameter '" +
-                                parameters[i].getName() +
-                                "' expected type " +
-                                expectedTypeName +
-                                "."
-                            );
-                        }
-                    }
-
-                    /*
-                     * Guard para trocar temporariamente para o
-                     * environment da library.
-                     */
-                    struct EnvironmentSwitchGuard
-                    {
-                        Runtime& runtime;
-                        Environment* previous;
-
-                        EnvironmentSwitchGuard(
-                            Runtime& runtime,
-                            Environment* environment
-                        )
-                            : runtime(runtime),
-                              previous(runtime.current)
-                        {
-                            runtime.current =
-                                environment;
-                        }
-
-                        ~EnvironmentSwitchGuard()
-                        {
-                            runtime.current =
-                                previous;
-                        }
-                    };
-
-                    /*
-                     * Guard para criar e remover o environment
-                     * da chamada da função.
-                     */
-                    struct EnvironmentPushGuard
-                    {
-                        Runtime& runtime;
-
-                        explicit EnvironmentPushGuard(
-                            Runtime& runtime
-                        )
-                            : runtime(runtime)
-                        {
-                            runtime.pushEnvironment();
-                        }
-
-                        ~EnvironmentPushGuard()
-                        {
-                            runtime.popEnvironment();
-                        }
-                    };
-
-                    /*
-                     * O environment do módulo passa a ser o
-                     * environment atual.
-                     */
-                    EnvironmentSwitchGuard moduleGuard(
-                        runtime,
-                        moduleEnvironment
-                    );
-
-                    /*
-                     * Criar o environment da chamada.
-                     *
-                     * O parent será o Environment do módulo.
-                     */
-                    EnvironmentPushGuard functionGuard(
-                        runtime
-                    );
-
-                    /*
-                     * Fazer o binding dos parâmetros.
-                     */
-                    for (size_t i = 0;
-                         i < parameters.size();
-                         ++i)
-                    {
-                        const FunctionParameter& parameter =
-                            parameters[i];
-
-                        if (
-                            parameter.getMode() ==
-                            FunctionParameterMode::MUT
-                        )
-                        {
-                            runtime.current->createReference(
-                                parameter.getName(),
-                                argumentReferences[i]
-                            );
-                        }
-                        else if (
-                            parameter.getMode() ==
-                            FunctionParameterMode::CONST
-                        )
-                        {
-                            runtime.current->createConst(
-                                parameter.getName(),
-                                std::move(
-                                    argumentValues[i]
-                                )
-                            );
-                        }
-                        else
-                        {
-                            runtime.current->createVar(
-                                parameter.getName(),
-                                std::move(
-                                    argumentValues[i]
-                                )
-                            );
-                        }
-                    }
-
-                    /*
-                     * Executar o body da função.
-                     */
-                    EvalResult result =
-                        eval(
-                            nokiFunction->getBody()
-                        );
-
-                    /*
-                     * RETURN pertence à função e é consumido aqui.
-                     */
-                    if (
-                        result.control ==
-                        FlowControl::RETURN
-                    )
+                    if (module == nullptr)
                     {
                         return {
-                            std::move(result.value),
+                            RuntimeValue(nullptr),
                             FlowControl::NONE
                         };
                     }
 
-                    /*
-                     * BREAK/CONTINUE não podem escapar
-                     * de uma função.
-                     */
-                    if (
-                        result.control ==
-                            FlowControl::BREAK ||
-                        result.control ==
-                            FlowControl::CONTINUE
-                    )
+                    Environment* moduleEnvironment =
+                        module->getEnvironment();
+
+                    if (moduleEnvironment == nullptr)
                     {
                         throw std::runtime_error(
-                            "Invalid break or continue outside "
-                            "of a while loop."
+                            "Noki library '" +
+                            libraryName +
+                            "' has no environment."
                         );
                     }
 
-                    /*
-                     * Função terminou sem return explícito.
-                     */
-                    return {
-                        RuntimeValue(nullptr),
-                        FlowControl::NONE
-                    };
-                }
-            }
-        }
-    }
+                    NokiFunction* nokiFunction =
+                        moduleEnvironment->findNokiFunction(
+                            functionName
+                        );
 
-    /*
-     * Primeiro verificamos se o receiver é um RuntimeObject.
-     */
-    RuntimeValue* receiver =
-        resolveLValue(objectNode);
-
-    if (receiver != nullptr && receiver->isObject())
-    {
-        RuntimeObject* object =
-            receiver->getObject();
-
-        if (object == nullptr)
-        {
-            return {
-                RuntimeValue(nullptr),
-                FlowControl::NONE
-            };
-        }
-
-        RuntimeObjectType* type =
-            runtime.objects.findType(
-                object->getTypeID()
-            );
-
-        if (type == nullptr)
-        {
-            return {
-                RuntimeValue(nullptr),
-                FlowControl::NONE
-            };
-        }
-
-        const BuiltinEntry* method =
-            type->findMethod(functionName);
-
-        if (method != nullptr)
-        {
-            RuntimeValue result =
-                std::visit(
-                    [&](const auto& func) -> RuntimeValue
+                    if (nokiFunction != nullptr)
                     {
-                        using T =
-                            std::decay_t<decltype(func)>;
+                        const auto& parameters =
+                            nokiFunction->getParameters();
 
-                        if constexpr (
-                            std::is_same_v<T, BuiltinFunc>
+                        const size_t argumentCount =
+                            node.children.size() - 1;
+
+                        if (
+                            argumentCount !=
+                            parameters.size()
                         )
                         {
-                            std::vector<RuntimeValue> args;
-
-                            args.reserve(
-                                node.children.size()
+                            throw std::runtime_error(
+                                "Noki function '" +
+                                functionName +
+                                "' expected " +
+                                std::to_string(
+                                    parameters.size()
+                                ) +
+                                " arguments, got " +
+                                std::to_string(
+                                    argumentCount
+                                ) +
+                                "."
                             );
+                        }
 
-                            args.push_back(*receiver);
+                        /*
+                         * Os argumentos pertencem ao ambiente do caller.
+                         */
+                        std::vector<RuntimeValue> argumentValues;
 
-                            for (size_t i = 1;
-                                 i < node.children.size();
-                                 ++i)
+                        argumentValues.resize(
+                            argumentCount
+                        );
+
+                        std::vector<RuntimeValue*>
+                            argumentReferences;
+
+                        argumentReferences.resize(
+                            argumentCount,
+                            nullptr
+                        );
+
+                        for (size_t i = 0;
+                             i < parameters.size();
+                             ++i)
+                        {
+                            const FunctionParameter& parameter =
+                                parameters[i];
+
+                            const ASTNode& argumentNode =
+                                *node.children[i + 1];
+
+                            if (
+                                parameter.getMode() ==
+                                FunctionParameterMode::MUT
+                            )
+                            {
+                                RuntimeValue* reference =
+                                    resolveLValue(
+                                        argumentNode
+                                    );
+
+                                if (reference == nullptr)
+                                {
+                                    throw std::runtime_error(
+                                        "Noki function '" +
+                                        functionName +
+                                        "' parameter '" +
+                                        parameter.getName() +
+                                        "' requires a mutable lvalue."
+                                    );
+                                }
+
+                                argumentReferences[i] =
+                                    reference;
+                            }
+                            else
                             {
                                 EvalResult argument =
-                                    eval(
-                                        *node.children[i]
-                                    );
+                                    eval(argumentNode);
 
                                 if (
                                     argument.control !=
@@ -1363,147 +1029,755 @@ if (target.getType() == TypeNode::MEMBER_ACCESS)
                                 )
                                 {
                                     throw std::runtime_error(
-                                        "Invalid control flow "
-                                        "in function argument."
+                                        "Invalid control flow in "
+                                        "function argument."
                                     );
                                 }
 
-                                args.push_back(
+                                argumentValues[i] =
                                     std::move(
                                         argument.value
+                                    );
+                            }
+                        }
+
+                        /*
+                         * Validar os tipos dos parâmetros.
+                         */
+                        for (size_t i = 0;
+                             i < parameters.size();
+                             ++i)
+                        {
+                            ASTNode::TypeNode expectedType =
+                                parameters[i].getType();
+
+                            bool valid = false;
+
+                            RuntimeValue* value = nullptr;
+
+                            if (
+                                parameters[i].getMode() ==
+                                FunctionParameterMode::MUT
+                            )
+                            {
+                                value =
+                                    argumentReferences[i];
+                            }
+                            else
+                            {
+                                value =
+                                    &argumentValues[i];
+                            }
+
+                            switch (expectedType)
+                            {
+                                case TypeNode::ANYVALUE:
+                                    valid = true;
+                                    break;
+
+                                case TypeNode::INT:
+                                    valid =
+                                        value->is<int64_t>();
+                                    break;
+
+                                case TypeNode::FLOAT:
+                                    valid =
+                                        value->is<double>();
+                                    break;
+
+                                case TypeNode::BOOL:
+                                    valid =
+                                        value->is<bool>();
+                                    break;
+
+                                case TypeNode::STRING:
+                                    valid =
+                                        value->is<std::string>();
+                                    break;
+
+                                case TypeNode::VECTOR:
+                                    valid =
+                                        value->isVector();
+                                    break;
+
+                                default:
+                                    valid = false;
+                                    break;
+                            }
+
+                            if (!valid)
+                            {
+                                std::string expectedTypeName;
+
+                                switch (expectedType)
+                                {
+                                    case TypeNode::ANYVALUE:
+                                        expectedTypeName = "any";
+                                        break;
+
+                                    case TypeNode::INT:
+                                        expectedTypeName = "int";
+                                        break;
+
+                                    case TypeNode::FLOAT:
+                                        expectedTypeName = "float";
+                                        break;
+
+                                    case TypeNode::BOOL:
+                                        expectedTypeName = "bool";
+                                        break;
+
+                                    case TypeNode::STRING:
+                                        expectedTypeName = "string";
+                                        break;
+
+                                    case TypeNode::VECTOR:
+                                        expectedTypeName = "vector";
+                                        break;
+
+                                    default:
+                                        expectedTypeName = "unknown";
+                                        break;
+                                }
+
+                                throw std::runtime_error(
+                                    "Noki function '" +
+                                    functionName +
+                                    "' parameter '" +
+                                    parameters[i].getName() +
+                                    "' expected type " +
+                                    expectedTypeName +
+                                    "."
+                                );
+                            }
+                        }
+
+                        /*
+                         * Guard para trocar temporariamente para o
+                         * environment da library.
+                         */
+                        struct EnvironmentSwitchGuard
+                        {
+                            Runtime& runtime;
+                            Environment* previous;
+
+                            EnvironmentSwitchGuard(
+                                Runtime& runtime,
+                                Environment* environment
+                            )
+                                : runtime(runtime),
+                                  previous(runtime.current)
+                            {
+                                runtime.current =
+                                    environment;
+                            }
+
+                            ~EnvironmentSwitchGuard()
+                            {
+                                runtime.current =
+                                    previous;
+                            }
+                        };
+
+                        /*
+                         * Guard para criar e remover o environment
+                         * da chamada da função.
+                         */
+                        struct EnvironmentPushGuard
+                        {
+                            Runtime& runtime;
+
+                            explicit EnvironmentPushGuard(
+                                Runtime& runtime
+                            )
+                                : runtime(runtime)
+                            {
+                                runtime.pushEnvironment();
+                            }
+
+                            ~EnvironmentPushGuard()
+                            {
+                                runtime.popEnvironment();
+                            }
+                        };
+
+                        /*
+                         * O environment do módulo passa a ser o
+                         * environment atual.
+                         */
+                        EnvironmentSwitchGuard moduleGuard(
+                            runtime,
+                            moduleEnvironment
+                        );
+
+                        /*
+                         * Criar o environment da chamada.
+                         *
+                         * O parent será o Environment do módulo.
+                         */
+                        EnvironmentPushGuard functionGuard(
+                            runtime
+                        );
+
+                        /*
+                         * Fazer o binding dos parâmetros.
+                         */
+                        for (size_t i = 0;
+                             i < parameters.size();
+                             ++i)
+                        {
+                            const FunctionParameter& parameter =
+                                parameters[i];
+
+                            if (
+                                parameter.getMode() ==
+                                FunctionParameterMode::MUT
+                            )
+                            {
+                                runtime.current->createReference(
+                                    parameter.getName(),
+                                    argumentReferences[i]
+                                );
+                            }
+                            else if (
+                                parameter.getMode() ==
+                                FunctionParameterMode::CONST
+                            )
+                            {
+                                runtime.current->createConst(
+                                    parameter.getName(),
+                                    std::move(
+                                        argumentValues[i]
                                     )
                                 );
                             }
-
-                            return func(args);
+                            else
+                            {
+                                runtime.current->createVar(
+                                    parameter.getName(),
+                                    std::move(
+                                        argumentValues[i]
+                                    )
+                                );
+                            }
                         }
-                        else if constexpr (
-                            std::is_same_v<T, BuiltinMutFunc>
+
+                        /*
+                         * Executar o body da função.
+                         */
+                        EvalResult result =
+                            eval(
+                                nokiFunction->getBody()
+                            );
+
+                        /*
+                         * RETURN pertence à função e é consumido aqui.
+                         */
+                        if (
+                            result.control ==
+                            FlowControl::RETURN
                         )
                         {
-                            std::vector<RuntimeValue> temporaries;
-                            std::vector<RuntimeValue*> args;
+                            return {
+                                std::move(result.value),
+                                FlowControl::NONE
+                            };
+                        }
 
-                            temporaries.reserve(
-                                node.children.size() - 1
+                        /*
+                         * BREAK/CONTINUE não podem escapar
+                         * de uma função.
+                         */
+                        if (
+                            result.control ==
+                                FlowControl::BREAK ||
+                            result.control ==
+                                FlowControl::CONTINUE
+                        )
+                        {
+                            throw std::runtime_error(
+                                "Invalid break or continue outside "
+                                "of a while loop."
                             );
+                        }
 
-                            args.reserve(
-                                node.children.size()
-                            );
+                        /*
+                         * Função terminou sem return explícito.
+                         */
+                        return {
+                            RuntimeValue(nullptr),
+                            FlowControl::NONE
+                        };
+                    }
+                }
+            }
+        }
 
-                            args.push_back(receiver);
+        /*
+         * Resolver o receiver.
+         */
+        RuntimeValue* receiver =
+            resolveLValue(objectNode);
 
-                            for (size_t i = 1;
-                                 i < node.children.size();
-                                 ++i)
+        if (receiver != nullptr)
+        {
+            /*
+             * RuntimeObject:
+             * usar exclusivamente o sistema de objetos existente.
+             */
+            if (receiver->isObject())
+            {
+                RuntimeObject* object =
+                    receiver->getObject();
+
+                if (object == nullptr)
+                {
+                    return {
+                        RuntimeValue(nullptr),
+                        FlowControl::NONE
+                    };
+                }
+
+                RuntimeObjectType* type =
+                    runtime.objects.findType(
+                        object->getTypeID()
+                    );
+
+                if (type == nullptr)
+                {
+                    return {
+                        RuntimeValue(nullptr),
+                        FlowControl::NONE
+                    };
+                }
+
+                const BuiltinEntry* method =
+                    type->findMethod(
+                        functionName
+                    );
+
+                if (method != nullptr)
+                {
+                    RuntimeValue result =
+                        std::visit(
+                            [&](const auto& func)
+                                -> RuntimeValue
                             {
-                                RuntimeValue* reference =
-                                    resolveLValue(
-                                        *node.children[i]
+                                using T =
+                                    std::decay_t<
+                                        decltype(func)
+                                    >;
+
+                                if constexpr (
+                                    std::is_same_v<
+                                        T,
+                                        BuiltinFunc
+                                    >
+                                )
+                                {
+                                    std::vector<
+                                        RuntimeValue
+                                    > args;
+
+                                    args.reserve(
+                                        node.children.size()
                                     );
 
-                                if (reference != nullptr)
-                                {
                                     args.push_back(
-                                        reference
+                                        *receiver
                                     );
-                                }
-                                else
-                                {
-                                    EvalResult argument =
-                                        eval(
-                                            *node.children[i]
-                                        );
 
-                                    if (
-                                        argument.control !=
-                                        FlowControl::NONE
+                                    for (
+                                        size_t i = 1;
+                                        i < node.children.size();
+                                        ++i
                                     )
                                     {
-                                        throw std::runtime_error(
-                                            "Invalid control flow "
-                                            "in function argument."
+                                        EvalResult argument =
+                                            eval(
+                                                *node.children[i]
+                                            );
+
+                                        if (
+                                            argument.control !=
+                                            FlowControl::NONE
+                                        )
+                                        {
+                                            throw std::runtime_error(
+                                                "Invalid control flow "
+                                                "in function argument."
+                                            );
+                                        }
+
+                                        args.push_back(
+                                            std::move(
+                                                argument.value
+                                            )
                                         );
                                     }
 
-                                    temporaries.push_back(
-                                        std::move(
-                                            argument.value
-                                        )
+                                    return func(args);
+                                }
+                                else if constexpr (
+                                    std::is_same_v<
+                                        T,
+                                        BuiltinMutFunc
+                                    >
+                                )
+                                {
+                                    std::vector<
+                                        RuntimeValue
+                                    > temporaries;
+
+                                    std::vector<
+                                        RuntimeValue*
+                                    > args;
+
+                                    temporaries.reserve(
+                                        node.children.size() - 1
+                                    );
+
+                                    args.reserve(
+                                        node.children.size()
                                     );
 
                                     args.push_back(
-                                        &temporaries.back()
+                                        receiver
                                     );
+
+                                    for (
+                                        size_t i = 1;
+                                        i < node.children.size();
+                                        ++i
+                                    )
+                                    {
+                                        RuntimeValue* reference =
+                                            resolveLValue(
+                                                *node.children[i]
+                                            );
+
+                                        if (
+                                            reference != nullptr
+                                        )
+                                        {
+                                            args.push_back(
+                                                reference
+                                            );
+                                        }
+                                        else
+                                        {
+                                            EvalResult argument =
+                                                eval(
+                                                    *node.children[i]
+                                                );
+
+                                            if (
+                                                argument.control !=
+                                                FlowControl::NONE
+                                            )
+                                            {
+                                                throw std::runtime_error(
+                                                    "Invalid control flow "
+                                                    "in function argument."
+                                                );
+                                            }
+
+                                            temporaries.push_back(
+                                                std::move(
+                                                    argument.value
+                                                )
+                                            );
+
+                                            args.push_back(
+                                                &temporaries.back()
+                                            );
+                                        }
+                                    }
+
+                                    return func(args);
                                 }
-                            }
+                            },
+                            method->function
+                        );
 
-                            return func(args);
-                        }
-                    },
-                    method->function
-                );
+                    return {
+                        std::move(result),
+                        FlowControl::NONE
+                    };
+                }
+            }
+            /*
+             * RuntimeValue intrínseco:
+             * resolver pelo RuntimeValueTypeID.
+             */
+            else
+            {
+                const RuntimeValueTypeID typeID =
+                    receiver->getTypeID();
 
+                RuntimeValueType* type =
+                    runtime.objects.findValueType(
+                        typeID
+                    );
+
+                if (type == nullptr)
+                {
+                    return {
+                        RuntimeValue(nullptr),
+                        FlowControl::NONE
+                    };
+                }
+
+                const BuiltinEntry* method =
+                    type->findMethod(
+                        functionName
+                    );
+
+                if (method != nullptr)
+                {
+                    RuntimeValue result =
+                        std::visit(
+                            [&](const auto& func)
+                                -> RuntimeValue
+                            {
+                                using T =
+                                    std::decay_t<
+                                        decltype(func)
+                                    >;
+
+                                if constexpr (
+                                    std::is_same_v<
+                                        T,
+                                        BuiltinFunc
+                                    >
+                                )
+                                {
+                                    std::vector<
+                                        RuntimeValue
+                                    > args;
+
+                                    args.reserve(
+                                        node.children.size()
+                                    );
+
+                                    args.push_back(
+                                        *receiver
+                                    );
+
+                                    for (
+                                        size_t i = 1;
+                                        i < node.children.size();
+                                        ++i
+                                    )
+                                    {
+                                        EvalResult argument =
+                                            eval(
+                                                *node.children[i]
+                                            );
+
+                                        if (
+                                            argument.control !=
+                                            FlowControl::NONE
+                                        )
+                                        {
+                                            throw std::runtime_error(
+                                                "Invalid control flow "
+                                                "in function argument."
+                                            );
+                                        }
+
+                                        args.push_back(
+                                            std::move(
+                                                argument.value
+                                            )
+                                        );
+                                    }
+
+                                    return func(args);
+                                }
+                                else if constexpr (
+                                    std::is_same_v<
+                                        T,
+                                        BuiltinMutFunc
+                                    >
+                                )
+                                {
+                                    std::vector<
+                                        RuntimeValue
+                                    > temporaries;
+
+                                    std::vector<
+                                        RuntimeValue*
+                                    > args;
+
+                                    temporaries.reserve(
+                                        node.children.size() - 1
+                                    );
+
+                                    args.reserve(
+                                        node.children.size()
+                                    );
+
+                                    args.push_back(
+                                        receiver
+                                    );
+
+                                    for (
+                                        size_t i = 1;
+                                        i < node.children.size();
+                                        ++i
+                                    )
+                                    {
+                                        RuntimeValue* reference =
+                                            resolveLValue(
+                                                *node.children[i]
+                                            );
+
+                                        if (
+                                            reference != nullptr
+                                        )
+                                        {
+                                            args.push_back(
+                                                reference
+                                            );
+                                        }
+                                        else
+                                        {
+                                            EvalResult argument =
+                                                eval(
+                                                    *node.children[i]
+                                                );
+
+                                            if (
+                                                argument.control !=
+                                                FlowControl::NONE
+                                            )
+                                            {
+                                                throw std::runtime_error(
+                                                    "Invalid control flow "
+                                                    "in function argument."
+                                                );
+                                            }
+
+                                            temporaries.push_back(
+                                                std::move(
+                                                    argument.value
+                                                )
+                                            );
+
+                                            args.push_back(
+                                                &temporaries.back()
+                                            );
+                                        }
+                                    }
+
+                                    return func(args);
+                                }
+                            },
+                            method->function
+                        );
+
+                    return {
+                        std::move(result),
+                        FlowControl::NONE
+                    };
+                }
+            }
+        }
+
+        /*
+         * Não era RuntimeObject nem RuntimeValue:
+         * continuar com o mecanismo atual de biblioteca C++.
+         */
+        const ASTNode& libraryNode =
+            objectNode;
+
+        if (libraryNode.getType() != TypeNode::VARIABLE)
+        {
             return {
-                std::move(result),
+                RuntimeValue(nullptr),
                 FlowControl::NONE
             };
         }
-    }
 
-    /*
-     * Não era método de RuntimeObject:
-     * tentar tratar como método builtin.
-     */
-    const BuiltinEntry* entry =
-        builtin::findFunction(functionName);
+        const std::string libraryName(
+            libraryNode.getString()
+        );
 
-    if (entry != nullptr)
-    {
+        Library* library =
+            runtime.libraries.findLibrary(
+                libraryName
+            );
+
+        if (library == nullptr)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::NONE
+            };
+        }
+
+        if (
+            !runtime.libraries.isImported(
+                libraryName
+            )
+        )
+        {
+            throw std::runtime_error(
+                "Library '" +
+                libraryName +
+                "' is not imported."
+            );
+        }
+
+        auto it =
+            library->functions.find(
+                functionName
+            );
+
+        if (it == library->functions.end())
+        {
+            throw std::runtime_error(
+                "Function '" +
+                functionName +
+                "' not found in library '" +
+                libraryName +
+                "'."
+            );
+        }
+
         RuntimeValue result =
             std::visit(
                 [&](const auto& func) -> RuntimeValue
                 {
                     using T =
-                        std::decay_t<decltype(func)>;
+                        std::decay_t<
+                            decltype(func)
+                        >;
 
                     if constexpr (
-                        std::is_same_v<T, BuiltinFunc>
+                        std::is_same_v<
+                            T,
+                            BuiltinFunc
+                        >
                     )
                     {
                         std::vector<RuntimeValue> args;
 
                         args.reserve(
-                            node.children.size()
+                            node.children.size() - 1
                         );
 
-                        EvalResult receiverResult =
-                            eval(objectNode);
-
-                        if (
-                            receiverResult.control !=
-                            FlowControl::NONE
+                        for (
+                            size_t i = 1;
+                            i < node.children.size();
+                            ++i
                         )
                         {
-                            throw std::runtime_error(
-                                "Invalid control flow "
-                                "in method receiver."
-                            );
-                        }
-
-                        args.push_back(
-                            std::move(
-                                receiverResult.value
-                            )
-                        );
-
-                        for (size_t i = 1;
-                             i < node.children.size();
-                             ++i)
-                        {
                             EvalResult argument =
-                                eval(*node.children[i]);
+                                eval(
+                                    *node.children[i]
+                                );
 
                             if (
                                 argument.control !=
@@ -1517,40 +1791,42 @@ if (target.getType() == TypeNode::MEMBER_ACCESS)
                             }
 
                             args.push_back(
-                                std::move(argument.value)
+                                std::move(
+                                    argument.value
+                                )
                             );
                         }
 
                         return func(args);
                     }
                     else if constexpr (
-                        std::is_same_v<T, BuiltinMutFunc>
+                        std::is_same_v<
+                            T,
+                            BuiltinMutFunc
+                        >
                     )
                     {
-                        std::vector<RuntimeValue> temporaries;
-                        std::vector<RuntimeValue*> args;
+                        std::vector<
+                            RuntimeValue
+                        > temporaries;
+
+                        std::vector<
+                            RuntimeValue*
+                        > args;
 
                         temporaries.reserve(
                             node.children.size() - 1
                         );
 
                         args.reserve(
-                            node.children.size()
+                            node.children.size() - 1
                         );
 
-                        RuntimeValue* builtinReceiver =
-                            resolveLValue(objectNode);
-
-                        if (builtinReceiver == nullptr)
-                            return RuntimeValue(nullptr);
-
-                        args.push_back(
-                            builtinReceiver
-                        );
-
-                        for (size_t i = 1;
-                             i < node.children.size();
-                             ++i)
+                        for (
+                            size_t i = 1;
+                            i < node.children.size();
+                            ++i
+                        )
                         {
                             RuntimeValue* reference =
                                 resolveLValue(
@@ -1559,7 +1835,9 @@ if (target.getType() == TypeNode::MEMBER_ACCESS)
 
                             if (reference != nullptr)
                             {
-                                args.push_back(reference);
+                                args.push_back(
+                                    reference
+                                );
                             }
                             else
                             {
@@ -1594,7 +1872,7 @@ if (target.getType() == TypeNode::MEMBER_ACCESS)
                         return func(args);
                     }
                 },
-                entry->function
+                it->second.function
             );
 
         return {
@@ -1602,174 +1880,6 @@ if (target.getType() == TypeNode::MEMBER_ACCESS)
             FlowControl::NONE
         };
     }
-
-    /*
-     * Não era RuntimeObject nem builtin:
-     * continuar com o mecanismo atual de biblioteca.
-     */
-    const ASTNode& libraryNode = objectNode;
-
-    if (libraryNode.getType() != TypeNode::VARIABLE)
-    {
-        return {
-            RuntimeValue(nullptr),
-            FlowControl::NONE
-        };
-    }
-
-    std::string libraryName(
-        libraryNode.getString()
-    );
-
-    Library* library =
-        runtime.libraries.findLibrary(
-            libraryName
-        );
-
-    if (library == nullptr)
-    {
-        return {
-            RuntimeValue(nullptr),
-            FlowControl::NONE
-        };
-    }
-
-    if (!runtime.libraries.isImported(libraryName))
-    {
-        return {
-            RuntimeValue(nullptr),
-            FlowControl::NONE
-        };
-    }
-
-    auto it =
-        library->functions.find(
-            functionName
-        );
-
-    if (it == library->functions.end())
-    {
-        return {
-            RuntimeValue(nullptr),
-            FlowControl::NONE
-        };
-    }
-
-    RuntimeValue result =
-        std::visit(
-            [&](const auto& func) -> RuntimeValue
-            {
-                using T =
-                    std::decay_t<decltype(func)>;
-
-                if constexpr (
-                    std::is_same_v<T, BuiltinFunc>
-                )
-                {
-                    std::vector<RuntimeValue> args;
-
-                    args.reserve(
-                        node.children.size() - 1
-                    );
-
-                    for (size_t i = 1;
-                         i < node.children.size();
-                         ++i)
-                    {
-                        EvalResult argument =
-                            eval(
-                                *node.children[i]
-                            );
-
-                        if (
-                            argument.control !=
-                            FlowControl::NONE
-                        )
-                        {
-                            throw std::runtime_error(
-                                "Invalid control flow "
-                                "in function argument."
-                            );
-                        }
-
-                        args.push_back(
-                            std::move(
-                                argument.value
-                            )
-                        );
-                    }
-
-                    return func(args);
-                }
-                else if constexpr (
-                    std::is_same_v<T, BuiltinMutFunc>
-                )
-                {
-                    std::vector<RuntimeValue> temporaries;
-                    std::vector<RuntimeValue*> args;
-
-                    temporaries.reserve(
-                        node.children.size() - 1
-                    );
-
-                    args.reserve(
-                        node.children.size() - 1
-                    );
-
-                    for (size_t i = 1;
-                         i < node.children.size();
-                         ++i)
-                    {
-                        RuntimeValue* reference =
-                            resolveLValue(
-                                *node.children[i]
-                            );
-
-                        if (reference != nullptr)
-                        {
-                            args.push_back(reference);
-                        }
-                        else
-                        {
-                            EvalResult argument =
-                                eval(
-                                    *node.children[i]
-                                );
-
-                            if (
-                                argument.control !=
-                                FlowControl::NONE
-                            )
-                            {
-                                throw std::runtime_error(
-                                    "Invalid control flow "
-                                    "in function argument."
-                                );
-                            }
-
-                            temporaries.push_back(
-                                std::move(
-                                    argument.value
-                                )
-                            );
-
-                            args.push_back(
-                                &temporaries.back()
-                            );
-                        }
-                    }
-
-                    return func(args);
-                }
-            },
-            it->second.function
-        );
-
-    return {
-        std::move(result),
-        FlowControl::NONE
-    };
-}
 
     throw std::runtime_error(
         "Invalid calling of a function '" +
@@ -1798,6 +1908,120 @@ EvalResult Interpreter::evalUni(const ASTNode& node) {
     }
     return {RuntimeValue(nullptr),FlowControl::NONE};
 
+}
+
+EvalResult Interpreter::evalMove(
+    const ASTNode& node
+)
+{
+    if (node.children.size() != 2)
+    {
+        throw std::runtime_error(
+            "Invalid move expression."
+        );
+    }
+
+    const ASTNode& target =
+        *node.children[0];
+
+    const ASTNode& source =
+        *node.children[1];
+
+    if (target.getType() != TypeNode::VARIABLE)
+    {
+        throw std::runtime_error(
+            "Move destination must be a variable."
+        );
+    }
+
+    const std::string targetName(
+        target.getString()
+    );
+
+    /*
+     * Primeiro obtemos o novo valor.
+     *
+     * Se o RHS for uma variável, fazemos o move
+     * diretamente do RuntimeValue armazenado nessa
+     * variável, sem passar por evalVar() e portanto
+     * sem fazer clone().
+     */
+    RuntimeValue value;
+
+    if (source.getType() == TypeNode::VARIABLE)
+    {
+        const std::string sourceName(
+            source.getString()
+        );
+
+        if (targetName == sourceName)
+        {
+            throw std::runtime_error(
+                "Cannot move a variable into itself: " +
+                sourceName
+            );
+        }
+
+        RuntimeValue* sourceValue =
+            runtime.current->findVar(sourceName);
+
+        if (sourceValue == nullptr)
+        {
+            throw std::runtime_error(
+                "Unknown variable: " +
+                sourceName
+            );
+        }
+
+        value =
+            std::move(*sourceValue);
+
+        if (!runtime.current->removeVar(sourceName))
+        {
+            throw std::runtime_error(
+                "Failed to remove moved variable: " +
+                sourceName
+            );
+        }
+    }
+    else
+    {
+        EvalResult result =
+            eval(source);
+
+        if (
+            result.control !=
+            FlowControl::NONE
+        )
+        {
+            throw std::runtime_error(
+                "Invalid control flow inside move expression."
+            );
+        }
+
+        value =
+            std::move(result.value);
+    }
+
+    /*
+     * O destino perde completamente o valor anterior.
+     */
+    runtime.current->removeVar(
+        targetName
+    );
+
+    /*
+     * O novo valor passa para o destino por move.
+     */
+    runtime.current->createVar(
+        targetName,
+        std::move(value)
+    );
+
+    return {
+        runtime.current->getVar(targetName),
+        FlowControl::NONE
+    };
 }
 
 EvalResult Interpreter::evalBlock(const ASTNode& node)

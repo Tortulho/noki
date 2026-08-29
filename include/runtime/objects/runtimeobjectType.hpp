@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "builtinEntry.hpp"
+#include "methodRegistry.hpp"
 
 using RuntimeObjectTypeID = std::uint32_t;
 using RuntimeObjectInstanceID = std::uint64_t;
@@ -47,10 +48,7 @@ private:
     RuntimeObjectTypeID id;
     std::string name;
 
-    std::unordered_map<
-        std::string,
-        BuiltinEntry
-    > methods;
+    MethodRegistry methods;
 };
 
 #endif
