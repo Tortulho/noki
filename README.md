@@ -12,4 +12,4 @@ REPL mode: ./nokifer
 
 FR mode: ./nokifer filename
 
-More about syntax on manual.md file
+More about things related to NOKI on manuals folder
