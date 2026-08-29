@@ -10,7 +10,10 @@ BASE_CXXFLAGS = -std=c++20 -Wall -Wextra \
                 -I$(INCLUDE_DIR)/runtime/objects \
                 -I$(INCLUDE_DIR)/env \
                 -I$(INCLUDE_DIR)/lib \
-                -I$(LIB_DIR)/libcpp/dummy
+                -I$(LIB_DIR)/libcpp/dummy \
+                -I$(LIB_DIR)/libcpp/file \
+                -I$(LIB_DIR)/libcpp/string \
+                -I$(LIB_DIR)/libcpp/vector
 
 SRC = \
     $(SRC_DIR)/ast.cpp \
@@ -24,13 +27,18 @@ SRC = \
     $(SRC_DIR)/runtime/runtimeval.cpp \
     $(SRC_DIR)/runtime/objects/runtimeobject.cpp \
     $(SRC_DIR)/runtime/objects/runtimeobjectManager.cpp \
+    $(SRC_DIR)/runtime/objects/methodRegistry.cpp \
     $(SRC_DIR)/runtime/objects/runtimeobjectType.cpp \
     $(SRC_DIR)/runtime/objects/runtimeobjectTypeInitializer.cpp \
     $(SRC_DIR)/runtime/objects/runtimefunc.cpp \
     $(SRC_DIR)/env/environment.cpp \
     $(SRC_DIR)/lib/libmanager.cpp \
     $(SRC_DIR)/lib/nokiModule.cpp \
-    $(LIB_DIR)/libcpp/dummy/dummy.cpp
+    $(LIB_DIR)/libcpp/dummy/dummy.cpp \
+    $(LIB_DIR)/libcpp/file/file.cpp \
+    $(LIB_DIR)/libcpp/file/fileObject.cpp \
+    $(LIB_DIR)/libcpp/string/strings.cpp \
+    $(LIB_DIR)/libcpp/vector/vectors.cpp
 
 DEBUG_DIR = bin/debug
 NORMAL_DIR = bin/normal
