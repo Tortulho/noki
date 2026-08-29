@@ -1,0 +1,249 @@
+# ============================================================
+# Noki control-flow test suite
+# Tests: while, break, continue, return, nesting, functions
+# ============================================================
+
+# ------------------------------------------------------------
+# TEST 1 - while + break
+# Expected: loop exits when i == 5
+# ------------------------------------------------------------
+println("TEST 1 - while + break")
+i = 0
+while (true) {
+    i = i + 1
+
+    if (i == 5) {
+        break
+    }
+}
+println(i)
+
+# ------------------------------------------------------------
+# TEST 2 - while + continue
+# Expected: loop continues without executing the println at i == 3
+# ------------------------------------------------------------
+println("TEST 2 - while + continue")
+i = 0
+while (i < 5) {
+    i = i + 1
+
+    if (i == 3) {
+        continue
+    }
+
+    println(i)
+}
+
+# ------------------------------------------------------------
+# TEST 3 - break inside if
+# Expected: i == 4
+# ------------------------------------------------------------
+println("TEST 3 - break inside if")
+i = 0
+while (i < 10) {
+    i = i + 1
+
+    if (i == 4) {
+        break
+    }
+}
+println(i)
+
+# ------------------------------------------------------------
+# TEST 4 - continue inside if
+# Expected output: 1, 2, 4, 5
+# ------------------------------------------------------------
+println("TEST 4 - continue inside if")
+i = 0
+while (i < 5) {
+    i = i + 1
+
+    if (i == 3) {
+        continue
+    }
+
+    println(i)
+}
+
+# ------------------------------------------------------------
+# TEST 5 - simple return
+# Expected: 10
+# ------------------------------------------------------------
+println("TEST 5 - simple return")
+function returnValue() {
+    return 10
+}
+
+println(returnValue())
+
+# ------------------------------------------------------------
+# TEST 6 - return inside if
+# Expected: 20
+# ------------------------------------------------------------
+println("TEST 6 - return inside if")
+function returnFromIf() {
+    if (true) {
+        return 20
+    }
+
+    return 30
+}
+
+println(returnFromIf())
+
+# ------------------------------------------------------------
+# TEST 7 - return inside while
+# Expected: 30
+# ------------------------------------------------------------
+println("TEST 7 - return inside while")
+function returnFromWhile() {
+    i = 0
+
+    while (i < 10) {
+        i = i + 1
+
+        if (i == 3) {
+            return 30
+        }
+    }
+
+    return 40
+}
+
+println(returnFromWhile())
+
+# ------------------------------------------------------------
+# TEST 8 - function without return
+# Expected: null
+# ------------------------------------------------------------
+println("TEST 8 - function without return")
+function noReturn() {
+    x = 10
+    x + 20
+}
+
+println(noReturn())
+
+# ------------------------------------------------------------
+# TEST 9 - return stops execution
+# Expected: 50 only; 60 must never be evaluated
+# ------------------------------------------------------------
+println("TEST 9 - return stops execution")
+function earlyReturn() {
+    return 50
+    println(60)
+}
+
+println(earlyReturn())
+
+# ------------------------------------------------------------
+# TEST 10 - break affects only the nearest while
+# Expected: inner loop exits, outer loop continues
+# ------------------------------------------------------------
+println("TEST 10 - nested while + break")
+i = 0
+while (i < 3) {
+    i = i + 1
+
+    j = 0
+    while (j < 3) {
+        j = j + 1
+
+        if (j == 2) {
+            break
+        }
+    }
+
+    println(i)
+}
+
+# ------------------------------------------------------------
+# TEST 11 - continue affects only the nearest while
+# Expected: outer loop continues normally
+# ------------------------------------------------------------
+println("TEST 11 - nested while + continue")
+i = 0
+while (i < 3) {
+    i = i + 1
+
+    j = 0
+    while (j < 3) {
+        j = j + 1
+
+        if (j == 2) {
+            continue
+        }
+
+        println(j)
+    }
+
+    println(i)
+}
+
+# ------------------------------------------------------------
+# TEST 12 - return crosses nested if + while
+# Expected: 70
+# ------------------------------------------------------------
+println("TEST 12 - nested control-flow + return")
+function nestedReturn() {
+    i = 0
+
+    while (i < 5) {
+        i = i + 1
+
+        if (i == 4) {
+            if (true) {
+                return 70
+            }
+        }
+    }
+
+    return 80
+}
+
+println(nestedReturn())
+
+# ------------------------------------------------------------
+# TEST 13 - function parameters + return
+# Expected: 30
+# ------------------------------------------------------------
+println("TEST 13 - function parameters + return")
+function add(a, b) {
+    return a + b
+}
+
+println(add(10, 20))
+
+# ------------------------------------------------------------
+# TEST 14 - return expression evaluation
+# Expected: 35
+# ------------------------------------------------------------
+println("TEST 14 - return expression")
+function calculate(a, b) {
+    return a * b + 5
+}
+
+println(calculate(5, 6))
+
+# ------------------------------------------------------------
+# TEST 15 - break before return
+# Expected: 90
+# ------------------------------------------------------------
+println("TEST 15 - break before return")
+function breakThenReturn() {
+    i = 0
+
+    while (true) {
+        i = i + 1
+        break
+    }
+
+    return 90
+}
+
+println(breakThenReturn())
+
+# ------------------------------------------------------------
+# END
+# ------------------------------------------------------------
+println("ALL CONTROL-FLOW TESTS REACHED END")

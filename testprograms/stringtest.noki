@@ -1,0 +1,282 @@
+import string
+
+# ============================================================
+# CAT
+# ============================================================
+
+s = "Hello"
+
+s.cat(" World")
+println(s)
+
+s.cat(123)
+println(s)
+
+s.cat(45.6)
+println(s)
+
+s.cat(true)
+println(s)
+
+s.cat(false)
+println(s)
+
+# ============================================================
+# SIZE / ISEMPTY
+# ============================================================
+
+println(s.size())
+println(s.isempty())
+
+s.empty()
+
+println(s)
+println(s.size())
+println(s.isempty())
+
+# ============================================================
+# FIND
+# ============================================================
+
+s = "abc abc abc"
+
+println(s.find("abc"))
+println(s.find("abc", 1))
+println(s.find("abc", 5))
+println(s.find("xyz"))
+
+# índice negativo
+println(s.find("abc", -4))
+
+# ============================================================
+# RFIND
+# ============================================================
+
+println(s.rfind("abc"))
+println(s.rfind("abc", 8))
+println(s.rfind("abc", 6))
+println(s.rfind("xyz"))
+
+# índice negativo
+println(s.rfind("abc", -1))
+
+# ============================================================
+# REPLACE
+# ============================================================
+
+s = "one two two two three"
+
+println(s.replace("two", "X"))
+println(s)
+
+# apenas 2 ocorrências
+println(s.replace("X", "two", 2))
+println(s)
+
+# -1 = todas
+println(s.replace("two", "Y", -1))
+println(s)
+
+# ============================================================
+# RREPLACE
+# ============================================================
+
+s = "a b b b c"
+
+println(s.rreplace("b", "X"))
+println(s)
+
+s = "a b b b c"
+
+println(s.rreplace("b", "X", 2))
+println(s)
+
+s = "a b b b c"
+
+println(s.rreplace("b", "X", -1))
+println(s)
+
+# ============================================================
+# REMOVE
+# ============================================================
+
+s = "hello hello world"
+
+println(s.remove("hello "))
+println(s)
+
+println(s.remove("xyz"))
+
+# ============================================================
+# AT
+# ============================================================
+
+s = "Noki"
+
+println(s.at(0))
+println(s.at(1))
+println(s.at(2))
+println(s.at(3))
+
+# ============================================================
+# COPY
+# ============================================================
+
+s = "abcdef"
+
+a = s.copy(3)
+println(a)
+
+b = s.copy(3, 2)
+println(b)
+
+# índice negativo
+c = s.copy(2, -2)
+println(c)
+
+# ============================================================
+# STRIP
+# ============================================================
+
+s = "     hello noki     "
+
+s.strip()
+
+println(s)
+
+# ============================================================
+# RESERVE
+# ============================================================
+
+s = "hello"
+
+s.reserve(100)
+
+println(s)
+println(s.size())
+
+# ============================================================
+# REVERSE
+# ============================================================
+
+s = "abcdef"
+
+s.reverse()
+
+println(s)
+
+# ============================================================
+# POPBACK
+# ============================================================
+
+s = "abcdef"
+
+println(s.popback(2))
+println(s)
+
+println(s.popback(10))
+println(s)
+
+# ============================================================
+# POP
+# ============================================================
+
+s = "abcdef"
+
+println(s.pop(2))
+println(s)
+
+s = "abcdef"
+
+println(s.pop(1, 3))
+println(s)
+
+# índices negativos
+s = "abcdef"
+
+println(s.pop(-1))
+println(s)
+
+s = "abcdef"
+
+println(s.pop(-4, -2))
+println(s)
+
+# ============================================================
+# FORMAT
+# ============================================================
+
+s = "int=%d float=%f string=%s"
+
+println(
+    s.format(
+        123,
+        4.5,
+        "hello"
+    )
+)
+
+println(s)
+
+# vector
+s = "vector=%v"
+
+println(
+    s.format(
+        [1, 2, 3]
+    )
+)
+
+println(s)
+
+# vector aninhado
+s = "nested=%v"
+
+println(
+    s.format(
+        [1, [2, 3], [4, [5, 6]], 7]
+    )
+)
+
+println(s)
+
+# literal %
+s = "100%%"
+
+println(
+    s.format()
+)
+
+println(s)
+
+# ============================================================
+# COMBINAÇÃO DE OPERAÇÕES
+# ============================================================
+
+s = "   hello world hello   "
+
+s.strip()
+println(s)
+
+println(s.find("hello"))
+
+println(s.replace("hello", "Noki"))
+println(s)
+
+s.reverse()
+println(s)
+
+s.reverse()
+println(s)
+
+println(s.pop(0))
+println(s)
+
+s.cat("!")
+println(s)
+
+# ============================================================
+# FINAL
+# ============================================================
+
+println("STRING TEST COMPLETED")

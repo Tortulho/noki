@@ -1,0 +1,66 @@
+import string
+import vector
+
+# ============================================================
+# STRING
+# ============================================================
+
+s = "abcabc"
+
+println("STRING:")
+println(s)
+println(s.find("abc"))
+println(s.find("abc", 1))
+println(s.rfind("abc"))
+println(s.size())
+
+s.cat("XYZ")
+println(s)
+
+s.replace("abc", "N")
+println(s)
+
+# ============================================================
+# VECTOR
+# ============================================================
+
+v = [1, 2, 3, 2, 1]
+
+println("VECTOR:")
+println(v)
+println(v.find(2))
+println(v.size())
+
+v.pushback(4)
+println(v)
+
+v.insert(0, 9)
+println(v)
+
+v.pop(0)
+println(v)
+
+v.remove(2, -1)
+println(v)
+
+# ============================================================
+# SAME METHOD NAMES, DIFFERENT TYPES
+# ============================================================
+
+s = "hello hello"
+v = [10, 20, 10, 30]
+
+println("CROSS TYPE:")
+println(s.find("hello"))
+println(v.find(10))
+
+println(s.size())
+println(v.size())
+
+println(s.pop(0))
+println(s)
+
+println(v.pop(0))
+println(v)
+
+println("TYPE DISPATCH TEST COMPLETED")
