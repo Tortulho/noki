@@ -61,6 +61,28 @@ public:
 
     RuntimeValue save(const std::string& value);
 
+    RuntimeValue write(
+        const std::string& value
+    );
+
+    RuntimeValue read(
+        std::int64_t size
+    );
+
+    RuntimeValue read(
+        std::int64_t size,
+        std::int64_t position
+    );
+
+    RuntimeValue search(
+        const std::string& value
+    );
+
+    RuntimeValue search(
+        const std::string& value,
+        std::int64_t position
+    );
+
 private:
 
     FILE* file = nullptr;

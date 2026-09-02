@@ -36,6 +36,22 @@ namespace file
         std::vector<RuntimeValue*>& args
     );
 
+    RuntimeValue read(
+        std::vector<RuntimeValue*>& args
+    );
+
+    RuntimeValue write(
+        std::vector<RuntimeValue*>& args
+    );
+
+    RuntimeValue search(
+        std::vector<RuntimeValue*>& args
+    );
+
+    RuntimeValue size(std::vector<RuntimeValue*>& args);
+
+    RuntimeValue create(const std::vector<RuntimeValue>& args);
+
 }
 
 Library createFileLibrary();

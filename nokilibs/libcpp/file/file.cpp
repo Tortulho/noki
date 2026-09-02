@@ -12,6 +12,8 @@
 
 namespace
 {
+
+    //UTILS
     FileObject* getFileObject(
         RuntimeValue* value
     )
@@ -114,6 +116,42 @@ public:
             BuiltinEntry{
                 static_cast<BuiltinMutFunc>(
                     file::save
+                )
+            }
+        );
+
+        type->registerMethod(
+            "read",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    file::read
+                )
+            }
+        );
+
+        type->registerMethod(
+            "write",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    file::write
+                )
+            }
+        );
+
+        type->registerMethod(
+            "search",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    file::search
+                )
+            }
+        );
+
+        type->registerMethod(
+            "size",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    file::size
                 )
             }
         );
@@ -283,28 +321,28 @@ namespace file
     }
 
     RuntimeValue load(
-    std::vector<RuntimeValue*>& args
-)
-{
-    if (args.size() != 1)
+        std::vector<RuntimeValue*>& args
+    )
     {
-        throw std::runtime_error(
-            "File.load() expects no arguments."
-        );
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "File.load() expects no arguments."
+            );
+        }
+
+        FileObject* file =
+            getFileObject(args[0]);
+
+        if (file == nullptr)
+        {
+            throw std::runtime_error(
+                "File.load() receiver is not a File object."
+            );
+        }
+
+        return file->load();
     }
-
-    FileObject* file =
-        getFileObject(args[0]);
-
-    if (file == nullptr)
-    {
-        throw std::runtime_error(
-            "File.load() receiver is not a File object."
-        );
-    }
-
-    return file->load();
-}
 
     RuntimeValue save(
         std::vector<RuntimeValue*>& args
@@ -349,6 +387,199 @@ namespace file
         );
     }
 
+    RuntimeValue read(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 2 && args.size() != 3)
+            throw std::runtime_error(
+                "Syntax error: file.read() expects 1 or 2 arguments."
+            );
+
+        RuntimeValue* receiver = args[0];
+
+        if (receiver == nullptr ||
+            !receiver->isObject())
+            throw std::runtime_error(
+                "Runtime error: file.read() receiver must be a File object."
+            );
+
+        RuntimeObject* object =
+            receiver->getObject();
+
+        FileObject* file =
+            dynamic_cast<FileObject*>(object);
+
+        if (file == nullptr)
+            throw std::runtime_error(
+                "Runtime error: file.read() receiver must be a File object."
+            );
+
+        if (!args[1]->is<int64_t>())
+            throw std::runtime_error(
+                "Runtime error: file.read() size must be an integer."
+            );
+
+        if (args.size() == 2)
+        {
+            return file->read(
+                args[1]->get<int64_t>()
+            );
+        }
+
+        if (args[2] == nullptr ||
+            !args[2]->is<int64_t>())
+            throw std::runtime_error(
+                "Runtime error: file.read() position must be an integer."
+            );
+
+        return file->read(
+            args[1]->get<int64_t>(),
+            args[2]->get<int64_t>()
+        );
+    }
+
+    RuntimeValue search(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 2 && args.size() != 3)
+            throw std::runtime_error(
+                "Syntax error: file.search() expects 1 or 2 arguments."
+            );
+
+        RuntimeValue* receiver = args[0];
+
+        if (receiver == nullptr ||
+            !receiver->isObject())
+            throw std::runtime_error(
+                "Runtime error: file.search() receiver must be a File object."
+            );
+
+        RuntimeObject* object =
+            receiver->getObject();
+
+        FileObject* file =
+            dynamic_cast<FileObject*>(object);
+
+        if (file == nullptr)
+            throw std::runtime_error(
+                "Runtime error: file.search() receiver must be a File object."
+            );
+
+        if (args[1] == nullptr ||
+            !args[1]->is<std::string>())
+            throw std::runtime_error(
+                "Runtime error: file.search() string must be a string."
+            );
+
+        if (args.size() == 2)
+        {
+            return file->search(
+                args[1]->get<std::string>()
+            );
+        }
+
+        if (args[2] == nullptr ||
+            !args[2]->is<int64_t>())
+            throw std::runtime_error(
+                "Runtime error: file.search() position must be an integer."
+            );
+
+        return file->search(
+            args[1]->get<std::string>(),
+            args[2]->get<int64_t>()
+        );
+    }
+
+    RuntimeValue write(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 2)
+            throw std::runtime_error(
+                "Syntax error: file.write() expects 1 argument."
+            );
+
+        RuntimeValue* receiver = args[0];
+        RuntimeValue* value = args[1];
+
+        if (receiver == nullptr ||
+            !receiver->isObject())
+            throw std::runtime_error(
+                "Runtime error: file.write() receiver must be a File object."
+            );
+
+        RuntimeObject* object =
+            receiver->getObject();
+
+        FileObject* file =
+            dynamic_cast<FileObject*>(object);
+
+        if (file == nullptr)
+            throw std::runtime_error(
+                "Runtime error: file.write() receiver must be a File object."
+            );
+
+        if (value == nullptr ||
+            !value->is<std::string>())
+            throw std::runtime_error(
+                "Runtime error: file.write() argument must be a string."
+            );
+
+        return file->write(
+            value->get<std::string>()
+        );
+    }
+
+    RuntimeValue size(std::vector<RuntimeValue*>& args)
+    {
+        if (args.size() != 1)
+            throw std::runtime_error("File.size() expects 1 argument.");
+
+        RuntimeValue* receiver = args[0];
+
+        if (receiver == nullptr || !receiver->isObject())
+            throw std::runtime_error("File.size() receiver must be a FileObject.");
+
+        RuntimeObject* object = receiver->getObject();
+
+        FileObject* file = dynamic_cast<FileObject*>(object);
+
+        if (file == nullptr)
+            throw std::runtime_error("File.size() receiver must be a FileObject.");
+
+        return RuntimeValue(static_cast<int64_t>(file->getSize()));
+    }
+
+    RuntimeValue create(const std::vector<RuntimeValue>& args)
+    {
+        if (args.size() != 1)
+            throw std::runtime_error("file.create() expects 1 argument.");
+
+        if (!args[0].is<std::string>())
+            throw std::runtime_error("file.create() expects a string filename.");
+
+        const std::string& filename = args[0].get<std::string>();
+
+        FILE* existing = std::fopen(filename.c_str(), "r");
+
+        if (existing != nullptr)
+        {
+            std::fclose(existing);
+            return RuntimeValue(false);
+        }
+
+        FILE* created = std::fopen(filename.c_str(), "w");
+
+        if (created == nullptr)
+            throw std::runtime_error("Failed to create file: " + filename);
+
+        std::fclose(created);
+
+        return RuntimeValue(true);
+    }
+
 }
 
 Library createFileLibrary()
@@ -364,7 +595,15 @@ Library createFileLibrary()
                         file::open
                     )
                 }
-            }
+            },
+            {
+                "create",
+                BuiltinEntry{
+                    static_cast<BuiltinFunc>(
+                        file::create
+                    )
+                }
+            },
         },
         {},
         file::createInitializer
