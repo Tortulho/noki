@@ -196,6 +196,9 @@ EvalResult Interpreter::eval(const ASTNode& node)
             };
         }
 
+        case TypeNode::EXIT:
+            std::exit(EXIT_SUCCESS);
+
         default:
             return {RuntimeValue(nullptr),FlowControl::NONE};
     }

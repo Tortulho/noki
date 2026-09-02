@@ -208,7 +208,7 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
 std::unique_ptr<ASTNode> Parser::parseStatement() {
 
     if (current.getType() == (Token::TokenType::null)) return ASTNode::ast_newNULL();
-    if (current.getType() == (Token::TokenType::EXIT)) exit(EXIT_SUCCESS);
+    //if (current.getType() == (Token::TokenType::EXIT)) exit(EXIT_SUCCESS);
     if (current.getType() == Token::OPEN_SCOPE) return parseBlock();
     if (current.getType() == Token::IF) return parseIf();
     if (current.getType() == Token::WHILE) return parseWhile();
@@ -253,6 +253,15 @@ std::unique_ptr<ASTNode> Parser::parseStatement() {
         node->children.push_back(
             std::move(expression)
         );
+
+        return node;
+    }
+
+    if (current.getType() == Token::EXIT) {
+        idx_currentToken++;
+
+        auto node = std::make_unique<ASTNode>();
+        node->type = ASTNode::TypeNode::EXIT;
 
         return node;
     }
@@ -634,7 +643,8 @@ std::unique_ptr<ASTNode> Parser::parsePower()
 
 std::unique_ptr<ASTNode> Parser::parseUnary()
 {
-    if (current.getType() == Token::BINARY_OPERATOR)
+    if (current.getType() == Token::BINARY_OPERATOR ||
+        current.getType() == Token::UNARY_OPERATOR)
     {
         std::string_view str = current.getString();
 
@@ -653,6 +663,20 @@ std::unique_ptr<ASTNode> Parser::parseUnary()
 
             return ASTNode::ast_newUnary(
                 op,
+                std::move(operand)
+            );
+        }
+
+        if (str == "!")
+        {
+            idx_currentToken++;
+
+            auto operand = parseUnary();
+
+            if (operand == nullptr) return nullptr;
+
+            return ASTNode::ast_newUnary(
+                ASTNode::NEGATIVE,
                 std::move(operand)
             );
         }
