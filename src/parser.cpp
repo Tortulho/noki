@@ -383,6 +383,9 @@ std::unique_ptr<ASTNode> Parser::parseIf()
     auto trueBlock = parseBlock();
     if (trueBlock == nullptr) return nullptr;
 
+    while (current.getType() == Token::NEWLINE_or_SEMICOLON)
+        idx_currentToken++;
+
     //existe elif?
     if (current.getType() == Token::ELIF)
     {
@@ -443,21 +446,25 @@ std::unique_ptr<ASTNode> Parser::parseBlock()
 
     auto block = ASTNode::ast_newBlock();
 
-    while (current.getType() != Token::CLOSE_SCOPE
-        && current.getType() != Token::END_OF_FILE)
+    while (true)
     {
+        // Ignorar linhas vazias/separadores
+        while (current.getType() == Token::NEWLINE_or_SEMICOLON)
+            idx_currentToken++;
+
+        if (current.getType() == Token::CLOSE_SCOPE)
+            break;
+
+        if (current.getType() == Token::END_OF_FILE)
+            return nullptr;
+
         auto statement = parseStatement();
 
-        if (statement == nullptr) return nullptr;
+        if (statement == nullptr)
+            return nullptr;
 
         block->children.push_back(std::move(statement));
-
-        // se NEXTLINE:
-        if (current.getType() == Token::NEWLINE_or_SEMICOLON) idx_currentToken++;
     }
-
-    //se tivermos fim de scope sem o indicativo devemos return null, ou seja, a operaçao nao tem valor
-    if (current.getType() != Token::CLOSE_SCOPE) return nullptr;
 
     idx_currentToken++; // consumir }
 
@@ -551,9 +558,43 @@ std::unique_ptr<ASTNode> Parser::parseAssignment()
     return left;
 }
 
-std::unique_ptr<ASTNode> Parser::parseComp() {
-    std::unique_ptr<ASTNode> left = parseTerm();
-    if (left == nullptr) return nullptr;
+// std::unique_ptr<ASTNode> Parser::parseComp() {
+//     std::unique_ptr<ASTNode> left = parseTerm();
+//     if (left == nullptr) return nullptr;
+//     while (true)
+//     {
+//         ASTNode::TypeOp op = getASTop(current);
+//         if (op != ASTNode::EQUAL &&
+//             op != ASTNode::NOT_EQUAL &&
+//             op != ASTNode::LESS &&
+//             op != ASTNode::LESS_EQUAL &&
+//             op != ASTNode::GREATER &&
+//             op != ASTNode::GREATER_EQUAL &&
+//             op != ASTNode::AND &&
+//             op != ASTNode::OR)
+//         {
+//             break;
+//         }
+//         idx_currentToken++;
+//         std::unique_ptr<ASTNode> right = parseTerm();
+//         if (right == nullptr) return nullptr;
+//         left = ASTNode::ast_newBinary(op,std::move(left),std::move(right));
+//     }
+//     return left;
+// }
+
+
+std::unique_ptr<ASTNode> Parser::parseComp()
+{
+    std::vector<std::unique_ptr<ASTNode>> operands;
+    std::vector<ASTNode::TypeOp> operators;
+
+    auto first = parseTerm();
+
+    if (first == nullptr)
+        return nullptr;
+
+    operands.push_back(std::move(first));
 
     while (true)
     {
@@ -573,14 +614,112 @@ std::unique_ptr<ASTNode> Parser::parseComp() {
 
         idx_currentToken++;
 
-        std::unique_ptr<ASTNode> right = parseTerm();
-        if (right == nullptr) return nullptr;
+        auto right = parseTerm();
 
-        left = ASTNode::ast_newBinary(op,std::move(left),std::move(right));
+        if (right == nullptr)
+            return nullptr;
+
+        operators.push_back(op);
+        operands.push_back(std::move(right));
     }
 
-    return left;
+    /*
+     * Comparações:
+     * == != < <= > >=
+     */
+    for (size_t i = 0; i < operators.size();)
+    {
+        ASTNode::TypeOp op = operators[i];
+
+        if (op == ASTNode::EQUAL ||
+            op == ASTNode::NOT_EQUAL ||
+            op == ASTNode::LESS ||
+            op == ASTNode::LESS_EQUAL ||
+            op == ASTNode::GREATER ||
+            op == ASTNode::GREATER_EQUAL)
+        {
+            operands[i] =
+                ASTNode::ast_newBinary(
+                    op,
+                    std::move(operands[i]),
+                    std::move(operands[i + 1])
+                );
+
+            operands.erase(
+                operands.begin() + i + 1
+            );
+
+            operators.erase(
+                operators.begin() + i
+            );
+
+            continue;
+        }
+
+        ++i;
+    }
+
+    /*
+     * AND:
+     * && tem precedência superior a ||
+     */
+    for (size_t i = 0; i < operators.size();)
+    {
+        if (operators[i] == ASTNode::AND)
+        {
+            operands[i] =
+                ASTNode::ast_newBinary(
+                    ASTNode::AND,
+                    std::move(operands[i]),
+                    std::move(operands[i + 1])
+                );
+
+            operands.erase(
+                operands.begin() + i + 1
+            );
+
+            operators.erase(
+                operators.begin() + i
+            );
+
+            continue;
+        }
+
+        ++i;
+    }
+
+    /*
+     * OR:
+     * ||
+     */
+    for (size_t i = 0; i < operators.size();)
+    {
+        if (operators[i] == ASTNode::OR)
+        {
+            operands[i] =
+                ASTNode::ast_newBinary(
+                    ASTNode::OR,
+                    std::move(operands[i]),
+                    std::move(operands[i + 1])
+                );
+
+            operands.erase(
+                operands.begin() + i + 1
+            );
+
+            operators.erase(
+                operators.begin() + i
+            );
+
+            continue;
+        }
+
+        ++i;
+    }
+
+    return std::move(operands[0]);
 }
+
 
 
 std::unique_ptr<ASTNode> Parser::parseTerm()

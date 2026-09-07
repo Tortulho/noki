@@ -5,6 +5,7 @@
 #include <string>
 #include <iostream>
 #include <charconv>
+#include "runtime.hpp"
 
 #define argc args.size()
 
@@ -152,6 +153,93 @@ RuntimeValue builtin::getInput(const std::vector<RuntimeValue>& args)
     return RuntimeValue(value);
 }
 
+RuntimeValue builtin::type(const std::vector<RuntimeValue>& args) {
+
+    if (argc != 1) return RuntimeValue(nullptr);
+    const RuntimeValue& value = args[0];
+
+    if (value.is<std::string>())
+        return RuntimeValue("string");
+
+    if (value.is<int64_t>())
+        return RuntimeValue("int");
+
+    if (value.is<double>())
+        return RuntimeValue("float");
+
+    if (value.is<bool>())
+        return RuntimeValue("bool");
+    
+    if (value.isVector())
+        return RuntimeValue("vector");
+    
+    if (value.isObject())
+    {
+        const RuntimeObject* object = value.getObject();
+
+        const RuntimeObjectType* type = runtime.objects.findType(object->getTypeID());
+
+        // obter o nome do tipo
+        return RuntimeValue(type->getName());
+    }
+
+    return RuntimeValue("null");
+}
+
+RuntimeValue builtin::isInt(const std::vector<RuntimeValue>& args) {
+    if (argc != 1) return RuntimeValue(nullptr);
+    const RuntimeValue& value = args[0];
+
+    if (value.is<int64_t>())
+        return RuntimeValue(true);
+    
+    return RuntimeValue(false);
+}
+
+RuntimeValue builtin::isFloat(const std::vector<RuntimeValue>& args) {
+    //std::cout << "DEBUG: IS FLOAT";
+    
+    if (argc != 1) return RuntimeValue(nullptr);
+    const RuntimeValue& value = args[0];
+
+    //std::cout << "DEBUG: IS FLOAT";
+
+    if (value.is<double>())
+        return RuntimeValue(true);
+    
+    return RuntimeValue(false);
+}
+
+RuntimeValue builtin::isString(const std::vector<RuntimeValue>& args) {
+    if (argc != 1) return RuntimeValue(nullptr);
+    const RuntimeValue& value = args[0];
+
+    if (value.is<std::string>())
+        return RuntimeValue(true);
+    
+    return RuntimeValue(false);
+}
+
+RuntimeValue builtin::isBool(const std::vector<RuntimeValue>& args) {
+    if (argc != 1) return RuntimeValue(nullptr);
+    const RuntimeValue& value = args[0];
+
+    if (value.is<bool>())
+        return RuntimeValue(true);
+    
+    return RuntimeValue(false);
+}
+
+RuntimeValue builtin::isNull(const std::vector<RuntimeValue>& args) {
+    if (argc != 1) return RuntimeValue(nullptr);
+    const RuntimeValue& value = args[0];
+
+    if (value.is<void*>())
+        return RuntimeValue(true);
+    
+    return RuntimeValue(false);
+}
+
 // RuntimeValue builtin::sqrt(const std::vector<RuntimeValue>& args) {
 
 //     if (argc != 1) return nullptr;
@@ -175,4 +263,10 @@ const std::unordered_map<std::string,BuiltinEntry> builtin::funcs =
     {"int", {builtin::toInt}},
     {"float", {builtin::toFloat}},
     {"string", {builtin::toString}},
+    {"type", {builtin::type}},
+    {"isInt", {builtin::isInt}},
+    {"isFloat", {builtin::isFloat}},
+    {"isBool", {builtin::isBool}},
+    {"isString", {builtin::isString}},
+    {"isNull", {builtin::isNull}},
 };

@@ -16,13 +16,13 @@ RuntimeValue Runner::run(const std::string& source) {
     auto node = parser.parse();
 
     if (node == nullptr) {
-        std::cout << "ERROR: error at parsing.\n";
+        std::cout << "ERROR: Critical error at parsing.\n";
         return RuntimeValue(nullptr);
     }
 
     // DEBUG
-    //std::cout << "DEBUG - PRINT NODE HERE WITH DEBUGGER\n";
-    node->dump(4);
+    // DUMP THE AST HERE
+    // node->dump(4);
 
     EvalResult result = Interpreter::eval(*node);
 

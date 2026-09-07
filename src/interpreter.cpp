@@ -238,9 +238,40 @@ EvalResult Interpreter::evalBinary(const ASTNode& node) {
         {
             return {RuntimeValue(left.get<double>() + right.get<int64_t>()),FlowControl::NONE};
         }
-        if(left.is<std::string>() && right.is<std::string>())
+        if (left.is<std::string>() && right.is<std::string>())
         {
             return {RuntimeValue(left.get<std::string>() + right.get<std::string>()),FlowControl::NONE};
+        }
+        if (left.is<std::string>() && right.is<std::int64_t>())
+        {
+            return {RuntimeValue(left.get<std::string>() + (std::to_string(right.get<std::int64_t>()))),FlowControl::NONE};
+        }
+        if (left.is<std::string>() && right.is<double>())
+        {
+            return {RuntimeValue(left.get<std::string>() + (std::to_string(right.get<double>()))),FlowControl::NONE};
+        }
+        if (left.is<std::string>() && right.is<bool>())
+        {
+            if (right.get<bool>() == true) {
+                return {RuntimeValue(left.get<std::string>() + "true"),FlowControl::NONE};
+            }
+            return {RuntimeValue(left.get<std::string>() + "false"),FlowControl::NONE};
+        }
+
+        if (right.is<std::string>() && left.is<std::int64_t>())
+        {
+            return {RuntimeValue((std::to_string(left.get<std::int64_t>())) + right.get<std::string>()),FlowControl::NONE};
+        }
+        if (right.is<std::string>() && left.is<double>())
+        {
+            return {RuntimeValue((std::to_string(left.get<double>()))+ right.get<std::string>()),FlowControl::NONE};
+        }
+        if (right.is<std::string>() && left.is<bool>())
+        {
+            if (left.get<bool>() == true) {
+                return {RuntimeValue("true" + right.get<std::string>()),FlowControl::NONE};
+            }
+            return {RuntimeValue("false" + right.get<std::string>()),FlowControl::NONE};
         }
         return {RuntimeValue(nullptr),FlowControl::NONE};}
     case ASTNode::SUB:

@@ -130,7 +130,9 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
                 if (pos + 1 < input.size() && input[pos + 1] == '&') {
                     tokens.push_back({"&&",2,Token::BINARY_OPERATOR});
                     pos += 2;
+                    continue;
                 }
+                pos++;
                 continue;
             }
         case '|':
@@ -138,7 +140,9 @@ void Token::tokenize(const std::string& input, std::vector<Token>& tokens) {
                 if (pos + 1 < input.size() && input[pos + 1] == '|') {
                     tokens.push_back({"||",2,Token::BINARY_OPERATOR});
                     pos += 2;
+                    continue;
                 }
+                pos++;
                 continue;
             }
         

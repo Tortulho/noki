@@ -4,6 +4,7 @@
 #include "file.hpp"
 #include "strings.hpp"
 #include "vectors.hpp"
+#include "time.hpp"
 
 Runtime runtime;
 
@@ -23,5 +24,9 @@ void Runtime::initializeLibraries()
 
     libraries.registerLibrary(
         createVectorLibrary()
+    );
+
+    libraries.registerLibrary(
+        createTimeLibrary()
     );
 }
