@@ -43,7 +43,16 @@ public:
         FileMode mode
     );
 
+    RuntimeValue set(
+        const std::string& path,
+        FileMode mode
+    );
+
     RuntimeValue close();
+
+    RuntimeValue rename(
+        const std::string& newPath
+    );
 
     const std::string& getPath() const noexcept;
 
@@ -55,11 +64,17 @@ public:
 
     std::int64_t getPosition() const noexcept;
 
+    void setPath(
+        const std::string& path
+    );
+
     std::int64_t getNextLinePosition() const noexcept;
 
     RuntimeValue load();
 
-    RuntimeValue save(const std::string& value);
+    RuntimeValue save(
+        const std::string& value
+    );
 
     RuntimeValue write(
         const std::string& value
@@ -95,7 +110,6 @@ private:
 
     bool isManual = false;
     FileMode mode;
-
 };
 
 #endif

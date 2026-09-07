@@ -5,6 +5,7 @@
 #include "runtimeobjectTypeInitializer.hpp"
 #include "libinitializer.hpp"
 
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -12,8 +13,6 @@
 
 namespace
 {
-
-    //UTILS
     FileObject* getFileObject(
         RuntimeValue* value
     )
@@ -94,6 +93,15 @@ public:
         );
 
         type->registerMethod(
+            "set",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    file::set
+                )
+            }
+        );
+
+        type->registerMethod(
             "close",
             BuiltinEntry{
                 static_cast<BuiltinMutFunc>(
@@ -155,6 +163,15 @@ public:
                 )
             }
         );
+
+        type->registerMethod(
+            "rename",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    file::frename
+                )
+            }
+        );
     }
 };
 
@@ -198,8 +215,10 @@ namespace file
             );
         }
 
-        FileMode mode =
-            parseFileMode(args[1]);
+        const FileMode mode =
+            parseFileMode(
+                args[1]
+            );
 
         RuntimeObjectType* type =
             runtime.objects.findType("File");
@@ -225,6 +244,270 @@ namespace file
         );
     }
 
+    RuntimeValue set(
+        const std::vector<RuntimeValue>& args
+    )
+    {
+        if (args.size() != 2)
+        {
+            throw std::runtime_error(
+                "file.set() expects 2 arguments."
+            );
+        }
+
+        if (!args[0].is<std::string>())
+        {
+            throw std::runtime_error(
+                "file.set() path must be a string."
+            );
+        }
+
+        const std::string& path =
+            args[0].get<std::string>();
+
+        if (path.empty())
+        {
+            throw std::runtime_error(
+                "file.set() path cannot be empty."
+            );
+        }
+
+        const FileMode mode =
+            parseFileMode(
+                args[1]
+            );
+
+        RuntimeObjectType* type =
+            runtime.objects.findType("File");
+
+        if (type == nullptr)
+        {
+            throw std::runtime_error(
+                "File type is not initialized."
+            );
+        }
+
+        auto object =
+            runtime.objects.createObject<FileObject>(
+                type->getID(),
+                path,
+                mode
+            );
+
+        object->open();
+
+        return RuntimeValue::fromObject(
+            std::move(object)
+        );
+    }
+
+    RuntimeValue create(
+        const std::vector<RuntimeValue>& args
+    )
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "file.create() expects 1 argument."
+            );
+        }
+
+        if (!args[0].is<std::string>())
+        {
+            throw std::runtime_error(
+                "file.create() expects a string filename."
+            );
+        }
+
+        const std::string& filename =
+            args[0].get<std::string>();
+
+        FILE* existing =
+            std::fopen(
+                filename.c_str(),
+                "r"
+            );
+
+        if (existing != nullptr)
+        {
+            std::fclose(existing);
+
+            return RuntimeValue(
+                RTValue{false}
+            );
+        }
+
+        FILE* created =
+            std::fopen(
+                filename.c_str(),
+                "w"
+            );
+
+        if (created == nullptr)
+        {
+            throw std::runtime_error(
+                "Failed to create file: " +
+                filename
+            );
+        }
+
+        if (std::fclose(created) != 0)
+        {
+            throw std::runtime_error(
+                "Failed to close created file: " +
+                filename
+            );
+        }
+
+        return RuntimeValue(
+            RTValue{true}
+        );
+    }
+
+    RuntimeValue fexists(
+        const std::vector<RuntimeValue>& args
+    )
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "file.exists() expects 1 argument."
+            );
+        }
+
+        if (!args[0].is<std::string>())
+        {
+            throw std::runtime_error(
+                "file.exists() path must be a string."
+            );
+        }
+
+        const std::string& path =
+            args[0].get<std::string>();
+
+        return RuntimeValue(
+            RTValue{
+                std::filesystem::is_regular_file(path)
+            }
+        );
+    }
+
+    RuntimeValue frename(
+        const std::vector<RuntimeValue>& args
+    )
+    {
+        if (args.size() != 2)
+        {
+            throw std::runtime_error(
+                "file.rename() expects 2 arguments."
+            );
+        }
+
+        if (
+            !args[0].is<std::string>() ||
+            !args[1].is<std::string>()
+        )
+        {
+            throw std::runtime_error(
+                "file.rename() paths must be strings."
+            );
+        }
+
+        const std::string& oldPath =
+            args[0].get<std::string>();
+
+        const std::string& newPath =
+            args[1].get<std::string>();
+
+        if (
+            oldPath.empty() || newPath.empty()
+        )
+        {
+            return RuntimeValue(
+                RTValue{false}
+            );
+        }
+
+        if (!std::filesystem::is_regular_file(oldPath))
+        {
+            return RuntimeValue(
+                RTValue{false}
+            );
+        }
+
+        std::filesystem::rename(
+            oldPath,
+            newPath
+        );
+
+        return RuntimeValue(
+            RTValue{true}
+        );
+    }
+
+    RuntimeValue frename(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 2)
+        {
+            throw std::runtime_error(
+                "file.rename() expects 1 argument."
+            );
+        }
+
+        FileObject* file = getFileObject(args[0]);
+
+        if (file == nullptr)
+        {
+            throw std::runtime_error(
+                "file.rename() receiver is not a File object."
+            );
+        }
+
+        if (
+            args[1] == nullptr ||
+            !args[1]->is<std::string>()
+        )
+        {
+            throw std::runtime_error(
+                "file.rename() path must be a string."
+            );
+        }
+
+        const std::string& newPath = args[1]->get<std::string>();
+
+        return file->rename(newPath);
+    }
+
+    RuntimeValue fdelete(
+        const std::vector<RuntimeValue>& args
+    )
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "file.remove() expects 1 argument."
+            );
+        }
+
+        if (!args[0].is<std::string>())
+        {
+            throw std::runtime_error(
+                "file.remove() path must be a string."
+            );
+        }
+
+        const std::string& path =
+            args[0].get<std::string>();
+
+        return RuntimeValue(
+            RTValue{
+                std::filesystem::remove(path)
+            }
+        );
+    }
+
     RuntimeValue open(
         std::vector<RuntimeValue*>& args
     )
@@ -235,17 +518,16 @@ namespace file
         )
         {
             throw std::runtime_error(
-                "File.open() expects 0 or 2 arguments."
+                "file.open() expects 0 or 2 arguments."
             );
         }
 
-        FileObject* file =
-            getFileObject(args[0]);
+        FileObject* file = getFileObject(args[0]);
 
         if (file == nullptr)
         {
             throw std::runtime_error(
-                "File.open() receiver is not a File object."
+                "file.open() receiver is not a File object."
             );
         }
 
@@ -254,43 +536,97 @@ namespace file
             return file->open();
         }
 
-        RuntimeValue* pathValue =
-            args[1];
-
-        RuntimeValue* modeValue =
-            args[2];
-
         if (
-            pathValue == nullptr ||
-            modeValue == nullptr
+            args[1] == nullptr ||
+            args[2] == nullptr
         )
         {
             throw std::runtime_error(
-                "File.open() received a null argument."
+                "file.open() received a null argument."
             );
         }
 
-        if (!pathValue->is<std::string>())
+        if (!args[1]->is<std::string>())
         {
             throw std::runtime_error(
-                "File.open() path must be a string."
+                "file.open() path must be a string."
             );
         }
 
         const std::string& path =
-            pathValue->get<std::string>();
+            args[1]->get<std::string>();
 
         if (path.empty())
         {
             throw std::runtime_error(
-                "File.open() path cannot be empty."
+                "file.open() path cannot be empty."
             );
         }
 
-        FileMode mode =
-            parseFileMode(*modeValue);
+        const FileMode mode =
+            parseFileMode(
+                *args[2]
+            );
 
         return file->open(
+            path,
+            mode
+        );
+    }
+
+    RuntimeValue set(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 3)
+        {
+            throw std::runtime_error(
+                "file.set() expects 2 arguments."
+            );
+        }
+
+        FileObject* file = getFileObject(args[0]);
+
+        if (file == nullptr)
+        {
+            throw std::runtime_error(
+                "file.set() receiver is not a File object."
+            );
+        }
+
+        if (
+            args[1] == nullptr ||
+            args[2] == nullptr
+        )
+        {
+            throw std::runtime_error(
+                "file.set() received a null argument."
+            );
+        }
+
+        if (!args[1]->is<std::string>())
+        {
+            throw std::runtime_error(
+                "file.set() path must be a string."
+            );
+        }
+
+        const std::string& path =
+            args[1]->get<std::string>();
+
+        if (path.empty())
+        {
+            throw std::runtime_error(
+                "file.set() path cannot be empty."
+            );
+        }
+
+        const FileMode mode =
+            parseFileMode(
+                *args[2]
+            );
+
+        return file->set(
             path,
             mode
         );
@@ -303,17 +639,16 @@ namespace file
         if (args.size() != 1)
         {
             throw std::runtime_error(
-                "File.close() expects no arguments."
+                "file.close() expects no arguments."
             );
         }
 
-        FileObject* file =
-            getFileObject(args[0]);
+        FileObject* file = getFileObject(args[0]);
 
         if (file == nullptr)
         {
             throw std::runtime_error(
-                "File.close() receiver is not a File object."
+                "file.close() receiver is not a File object."
             );
         }
 
@@ -327,17 +662,16 @@ namespace file
         if (args.size() != 1)
         {
             throw std::runtime_error(
-                "File.load() expects no arguments."
+                "file.load() expects no arguments."
             );
         }
 
-        FileObject* file =
-            getFileObject(args[0]);
+        FileObject* file = getFileObject(args[0]);
 
         if (file == nullptr)
         {
             throw std::runtime_error(
-                "File.load() receiver is not a File object."
+                "file.load() receiver is not a File object."
             );
         }
 
@@ -351,39 +685,31 @@ namespace file
         if (args.size() != 2)
         {
             throw std::runtime_error(
-                "File.save() expects 1 argument."
+                "file.save() expects 1 argument."
             );
         }
 
-        FileObject* file =
-            getFileObject(args[0]);
+        FileObject* file = getFileObject(args[0]);
 
         if (file == nullptr)
         {
             throw std::runtime_error(
-                "File.save() receiver is not a File object."
+                "file.save() receiver is not a File object."
             );
         }
 
-        RuntimeValue* value =
-            args[1];
-
-        if (value == nullptr)
+        if (
+            args[1] == nullptr ||
+            !args[1]->is<std::string>()
+        )
         {
             throw std::runtime_error(
-                "File.save() argument cannot be null."
-            );
-        }
-
-        if (!value->is<std::string>())
-        {
-            throw std::runtime_error(
-                "File.save() argument must be a string."
+                "file.save() argument must be a string."
             );
         }
 
         return file->save(
-            value->get<std::string>()
+            args[1]->get<std::string>()
         );
     }
 
@@ -392,33 +718,27 @@ namespace file
     )
     {
         if (args.size() != 2 && args.size() != 3)
+        {
             throw std::runtime_error(
-                "Syntax error: file.read() expects 1 or 2 arguments."
+                "file.read() expects 1 or 2 arguments."
             );
+        }
 
-        RuntimeValue* receiver = args[0];
-
-        if (receiver == nullptr ||
-            !receiver->isObject())
-            throw std::runtime_error(
-                "Runtime error: file.read() receiver must be a File object."
-            );
-
-        RuntimeObject* object =
-            receiver->getObject();
-
-        FileObject* file =
-            dynamic_cast<FileObject*>(object);
+        FileObject* file = getFileObject(args[0]);
 
         if (file == nullptr)
+        {
             throw std::runtime_error(
-                "Runtime error: file.read() receiver must be a File object."
+                "file.read() receiver must be a File object."
             );
+        }
 
-        if (!args[1]->is<int64_t>())
+        if (args[1] == nullptr ||!args[1]->is<int64_t>())
+        {
             throw std::runtime_error(
-                "Runtime error: file.read() size must be an integer."
+                "file.read() size must be an integer."
             );
+        }
 
         if (args.size() == 2)
         {
@@ -427,67 +747,15 @@ namespace file
             );
         }
 
-        if (args[2] == nullptr ||
-            !args[2]->is<int64_t>())
-            throw std::runtime_error(
-                "Runtime error: file.read() position must be an integer."
-            );
-
-        return file->read(
-            args[1]->get<int64_t>(),
-            args[2]->get<int64_t>()
-        );
-    }
-
-    RuntimeValue search(
-        std::vector<RuntimeValue*>& args
-    )
-    {
-        if (args.size() != 2 && args.size() != 3)
-            throw std::runtime_error(
-                "Syntax error: file.search() expects 1 or 2 arguments."
-            );
-
-        RuntimeValue* receiver = args[0];
-
-        if (receiver == nullptr ||
-            !receiver->isObject())
-            throw std::runtime_error(
-                "Runtime error: file.search() receiver must be a File object."
-            );
-
-        RuntimeObject* object =
-            receiver->getObject();
-
-        FileObject* file =
-            dynamic_cast<FileObject*>(object);
-
-        if (file == nullptr)
-            throw std::runtime_error(
-                "Runtime error: file.search() receiver must be a File object."
-            );
-
-        if (args[1] == nullptr ||
-            !args[1]->is<std::string>())
-            throw std::runtime_error(
-                "Runtime error: file.search() string must be a string."
-            );
-
-        if (args.size() == 2)
+        if (args[2] == nullptr ||!args[2]->is<int64_t>())
         {
-            return file->search(
-                args[1]->get<std::string>()
+            throw std::runtime_error(
+                "file.read() position must be an integer."
             );
         }
 
-        if (args[2] == nullptr ||
-            !args[2]->is<int64_t>())
-            throw std::runtime_error(
-                "Runtime error: file.search() position must be an integer."
-            );
-
-        return file->search(
-            args[1]->get<std::string>(),
+        return file->read(
+            args[1]->get<int64_t>(),
             args[2]->get<int64_t>()
         );
     }
@@ -497,89 +765,114 @@ namespace file
     )
     {
         if (args.size() != 2)
+        {
             throw std::runtime_error(
-                "Syntax error: file.write() expects 1 argument."
+                "file.write() expects 1 argument."
             );
+        }
 
-        RuntimeValue* receiver = args[0];
-        RuntimeValue* value = args[1];
-
-        if (receiver == nullptr ||
-            !receiver->isObject())
-            throw std::runtime_error(
-                "Runtime error: file.write() receiver must be a File object."
-            );
-
-        RuntimeObject* object =
-            receiver->getObject();
-
-        FileObject* file =
-            dynamic_cast<FileObject*>(object);
+        FileObject* file = getFileObject(args[0]);
 
         if (file == nullptr)
+        {
             throw std::runtime_error(
-                "Runtime error: file.write() receiver must be a File object."
+                "file.write() receiver must be a File object."
             );
+        }
 
-        if (value == nullptr ||
-            !value->is<std::string>())
+        if (args[1] == nullptr ||!args[1]->is<std::string>())
+        {
             throw std::runtime_error(
-                "Runtime error: file.write() argument must be a string."
+                "file.write() argument must be a string."
             );
+        }
 
         return file->write(
-            value->get<std::string>()
+            args[1]->get<std::string>()
         );
     }
 
-    RuntimeValue size(std::vector<RuntimeValue*>& args)
+    RuntimeValue search(
+        std::vector<RuntimeValue*>& args
+    )
     {
-        if (args.size() != 1)
-            throw std::runtime_error("File.size() expects 1 argument.");
-
-        RuntimeValue* receiver = args[0];
-
-        if (receiver == nullptr || !receiver->isObject())
-            throw std::runtime_error("File.size() receiver must be a FileObject.");
-
-        RuntimeObject* object = receiver->getObject();
-
-        FileObject* file = dynamic_cast<FileObject*>(object);
-
-        if (file == nullptr)
-            throw std::runtime_error("File.size() receiver must be a FileObject.");
-
-        return RuntimeValue(static_cast<int64_t>(file->getSize()));
-    }
-
-    RuntimeValue create(const std::vector<RuntimeValue>& args)
-    {
-        if (args.size() != 1)
-            throw std::runtime_error("file.create() expects 1 argument.");
-
-        if (!args[0].is<std::string>())
-            throw std::runtime_error("file.create() expects a string filename.");
-
-        const std::string& filename = args[0].get<std::string>();
-
-        FILE* existing = std::fopen(filename.c_str(), "r");
-
-        if (existing != nullptr)
+        if (args.size() != 2 && args.size() != 3)
         {
-            std::fclose(existing);
-            return RuntimeValue(false);
+            throw std::runtime_error(
+                "file.search() expects 1 or 2 arguments."
+            );
         }
 
-        FILE* created = std::fopen(filename.c_str(), "w");
+        FileObject* file = getFileObject(args[0]);
 
-        if (created == nullptr)
-            throw std::runtime_error("Failed to create file: " + filename);
+        if (file == nullptr)
+        {
+            throw std::runtime_error(
+                "file.search() receiver must be a File object."
+            );
+        }
 
-        std::fclose(created);
+        if (
+            args[1] == nullptr ||
+            !args[1]->is<std::string>()
+        )
+        {
+            throw std::runtime_error(
+                "file.search() string must be a string."
+            );
+        }
 
-        return RuntimeValue(true);
+        if (args.size() == 2)
+        {
+            return file->search(
+                args[1]->get<std::string>()
+            );
+        }
+
+        if (
+            args[2] == nullptr ||
+            !args[2]->is<int64_t>()
+        )
+        {
+            throw std::runtime_error(
+                "file.search() position must be an integer."
+            );
+        }
+
+        return file->search(
+            args[1]->get<std::string>(),
+            args[2]->get<int64_t>()
+        );
     }
 
+    RuntimeValue size(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "file.size() expects no arguments."
+            );
+        }
+
+        FileObject* file = getFileObject(args[0]);
+
+        if (file == nullptr)
+        {
+            throw std::runtime_error(
+                "file.size() receiver must be a File object."
+            );
+        }
+
+        return RuntimeValue(
+            RTValue{
+                static_cast<std::int64_t>(
+                    file->getSize()
+                )
+            }
+        );
+    }
 }
 
 Library createFileLibrary()
@@ -597,6 +890,14 @@ Library createFileLibrary()
                 }
             },
             {
+                "set",
+                BuiltinEntry{
+                    static_cast<BuiltinFunc>(
+                        file::set
+                    )
+                }
+            },
+            {
                 "create",
                 BuiltinEntry{
                     static_cast<BuiltinFunc>(
@@ -604,6 +905,30 @@ Library createFileLibrary()
                     )
                 }
             },
+            {
+                "exists",
+                BuiltinEntry{
+                    static_cast<BuiltinFunc>(
+                        file::fexists
+                    )
+                }
+            },
+            {
+                "rename",
+                BuiltinEntry{
+                    static_cast<BuiltinFunc>(
+                        file::frename
+                    )
+                }
+            },
+            {
+                "remove",
+                BuiltinEntry{
+                    static_cast<BuiltinFunc>(
+                        file::fdelete
+                    )
+                }
+            }
         },
         {},
         file::createInitializer

@@ -184,6 +184,24 @@ public:
                 )
             }
         );
+
+        type->registerMethod(
+            "isDigit",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    string::isDigit
+                )
+            }
+        );
+
+        type->registerMethod(
+            "isNum",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    string::isNum
+                )
+            }
+        );
     }
 };
 
@@ -1214,6 +1232,206 @@ namespace string {
         );
 
         return RuntimeValue(true);
+    }
+
+    RuntimeValue isDigit(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "string.isDigit() expects no arguments."
+            );
+        }
+
+        RuntimeValue* rtstr = args[0];
+
+        if (rtstr == nullptr)
+        {
+            throw std::runtime_error(
+                "Runtime error: string.isDigit() received a null receiver."
+            );
+        }
+
+        if (!rtstr->is<std::string>())
+        {
+            throw std::runtime_error(
+                "Runtime error: string.isDigit() receiver must be a string."
+            );
+        }
+
+        const std::string& str =
+            rtstr->get<std::string>();
+
+        if (str.empty())
+            return RuntimeValue(false);
+
+        for (unsigned char character : str)
+        {
+            if (
+                character < '0' ||
+                character > '9'
+            )
+            {
+                return RuntimeValue(false);
+            }
+        }
+
+        return RuntimeValue(true);
+    }
+
+    RuntimeValue isNum(
+        std::vector<RuntimeValue*>& args
+    )
+    {
+        if (args.size() != 1)
+        {
+            throw std::runtime_error(
+                "string.isNum() expects no arguments."
+            );
+        }
+
+        RuntimeValue* rtstr = args[0];
+
+        if (rtstr == nullptr)
+        {
+            throw std::runtime_error(
+                "Runtime error: string.isNum() received a null receiver."
+            );
+        }
+
+        if (!rtstr->is<std::string>())
+        {
+            throw std::runtime_error(
+                "Runtime error: string.isNum() receiver must be a string."
+            );
+        }
+
+        const std::string& str =
+            rtstr->get<std::string>();
+
+        if (str.empty())
+            return RuntimeValue(false);
+
+        std::size_t position = 0;
+
+        if (
+            str[position] == '+' ||
+            str[position] == '-'
+        )
+        {
+            ++position;
+
+            if (position == str.size())
+                return RuntimeValue(false);
+        }
+
+        bool hasDigitsBeforePoint = false;
+        bool hasDigitsAfterPoint = false;
+        bool hasPoint = false;
+
+        while (position < str.size())
+        {
+            const char character =
+                str[position];
+
+            if (
+                character >= '0' &&
+                character <= '9'
+            )
+            {
+                hasDigitsBeforePoint = true;
+                ++position;
+                continue;
+            }
+
+            break;
+        }
+
+        if (
+            position < str.size() &&
+            str[position] == '.'
+        )
+        {
+            hasPoint = true;
+            ++position;
+
+            while (position < str.size())
+            {
+                const char character =
+                    str[position];
+
+                if (
+                    character >= '0' &&
+                    character <= '9'
+                )
+                {
+                    hasDigitsAfterPoint = true;
+                    ++position;
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        if (
+            !hasDigitsBeforePoint &&
+            !hasDigitsAfterPoint
+        )
+        {
+            return RuntimeValue(false);
+        }
+
+        if (
+            position < str.size() &&
+            (
+                str[position] == 'e' ||
+                str[position] == 'E'
+            )
+        )
+        {
+            ++position;
+
+            if (
+                position < str.size() &&
+                (
+                    str[position] == '+' ||
+                    str[position] == '-'
+                )
+            )
+            {
+                ++position;
+            }
+
+            const std::size_t exponentStart =
+                position;
+
+            while (position < str.size())
+            {
+                const char character =
+                    str[position];
+
+                if (
+                    character >= '0' &&
+                    character <= '9'
+                )
+                {
+                    ++position;
+                    continue;
+                }
+
+                break;
+            }
+
+            if (position == exponentStart)
+                return RuntimeValue(false);
+        }
+
+        return RuntimeValue(
+            position == str.size()
+        );
     }
 
 }

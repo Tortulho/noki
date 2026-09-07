@@ -1,17 +1,21 @@
 #include "fileObject.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cstring>
+#include <filesystem>
 #include <stdexcept>
 #include <utility>
-#include <array>
-#include <algorithm>
-#include <cstring>
 
 #include "runtimeobjectManager.hpp"
 #include "runtimeval.hpp"
 
 namespace
 {
-    const char* getOpenMode(FileMode mode) {
+    const char* getOpenMode(
+        FileMode mode
+    )
+    {
         switch (mode)
         {
             case FileMode::READ:
@@ -19,6 +23,27 @@ namespace
 
             case FileMode::WRITE:
                 return "w";
+
+            case FileMode::READ_WRITE:
+                return "r+";
+        }
+
+        throw std::runtime_error(
+            "Invalid file mode."
+        );
+    }
+
+    const char* getCloneOpenMode(
+        FileMode mode
+    )
+    {
+        switch (mode)
+        {
+            case FileMode::READ:
+                return "r";
+
+            case FileMode::WRITE:
+                return "r+";
 
             case FileMode::READ_WRITE:
                 return "r+";
@@ -42,7 +67,8 @@ FileObject::FileObject(
     ),
       path(std::move(path)),
       mode(mode)
-{}
+{
+}
 
 FileObject::~FileObject()
 {
@@ -60,66 +86,100 @@ std::unique_ptr<RuntimeObject> FileObject::clone() const
     RuntimeObjectManager* manager =
         getObjectManager();
 
+    std::unique_ptr<FileObject> object;
+
     if (manager == nullptr)
     {
-        auto object =
+        object =
             std::make_unique<FileObject>(
                 nullptr,
                 getTypeID(),
                 path,
                 mode
             );
+    }
+    else
+    {
+        object =
+            manager->createObject<FileObject>(
+                getTypeID(),
+                path,
+                mode
+            );
+    }
 
-        object->size = size;
+    object->size =
+        size;
 
-        object->position = position;
+    object->position =
+        position;
 
-        object->nextLinePosition = nextLinePosition;
+    object->nextLinePosition =
+        nextLinePosition;
 
-        /*
-         * O FILE* não é clonado.
-         */
+    if (file == nullptr)
+    {
         object->file = nullptr;
         object->isManual = false;
 
         return object;
     }
 
-    auto object =
-        manager->createObject<FileObject>(
-            getTypeID(),
-            path,
-            mode
+    object->file =
+        std::fopen(
+            path.c_str(),
+            getCloneOpenMode(mode)
         );
 
-    object->size = size;
-    object->position = position;
-    object->nextLinePosition = nextLinePosition;
+    if (object->file == nullptr)
+    {
+        throw std::runtime_error(
+            "Failed to clone open file: " +
+            path
+        );
+    }
 
-    /*
-     * O clone começa fechado.
-     */
-    object->file = nullptr;
-    object->isManual = false;
+    if (
+        std::fseek(
+            object->file,
+            static_cast<long>(position),
+            SEEK_SET
+        ) != 0
+    )
+    {
+        std::fclose(object->file);
+        object->file = nullptr;
+
+        throw std::runtime_error(
+            "Failed to restore file position while cloning: " +
+            path
+        );
+    }
+
+    object->isManual =
+        isManual;
 
     return object;
 }
 
 RuntimeValue FileObject::open()
 {
-    if (file != nullptr) {
+    if (file != nullptr)
+    {
         throw std::runtime_error(
             "File is already open: " +
             path
         );
     }
 
-    file = std::fopen(
-        path.c_str(),
-        getOpenMode(mode)
-    );
+    file =
+        std::fopen(
+            path.c_str(),
+            getOpenMode(mode)
+        );
 
-    if (file == nullptr) {
+    if (file == nullptr)
+    {
         throw std::runtime_error(
             "Failed to open file: " +
             path
@@ -128,38 +188,52 @@ RuntimeValue FileObject::open()
 
     isManual = true;
 
-    /*
-     * Determinar o tamanho actual do ficheiro.
-     */
-    if (std::fseek(file,0,SEEK_END) != 0) {
+    if (
+        std::fseek(
+            file,
+            0,
+            SEEK_END
+        ) != 0
+    )
+    {
         std::fclose(file);
         file = nullptr;
         isManual = false;
+
         throw std::runtime_error(
             "Failed to seek file: " +
             path
         );
     }
 
-    const long fileSize = std::ftell(file);
+    const long fileSize =
+        std::ftell(file);
 
     if (fileSize < 0)
     {
         std::fclose(file);
         file = nullptr;
         isManual = false;
+
         throw std::runtime_error(
-            "Failed to determine file size: " + path
+            "Failed to determine file size: " +
+            path
         );
     }
 
-    size = static_cast<std::int64_t>(fileSize);
+    size =
+        static_cast<std::int64_t>(
+            fileSize
+        );
 
-    /*
-     * Posicionar no início do ficheiro.
-     */
-    if (std::fseek(file,0,SEEK_SET) != 0) {
-
+    if (
+        std::fseek(
+            file,
+            0,
+            SEEK_SET
+        ) != 0
+    )
+    {
         std::fclose(file);
         file = nullptr;
         isManual = false;
@@ -189,6 +263,48 @@ RuntimeValue FileObject::open(
         );
     }
 
+    const std::string oldPath =
+        path;
+
+    const FileMode oldMode =
+        mode;
+
+    path = newPath;
+    mode = newMode;
+
+    try
+    {
+        return open();
+    }
+    catch (...)
+    {
+        path = oldPath;
+        mode = oldMode;
+
+        throw;
+    }
+}
+
+RuntimeValue FileObject::set(
+    const std::string& newPath,
+    FileMode newMode
+)
+{
+    if (newPath.empty())
+    {
+        throw std::runtime_error(
+            "File path cannot be empty."
+        );
+    }
+
+    if (file != nullptr)
+    {
+        throw std::runtime_error(
+            "File is already open: " +
+            path
+        );
+    }
+
     path = newPath;
     mode = newMode;
 
@@ -197,7 +313,8 @@ RuntimeValue FileObject::open(
 
 RuntimeValue FileObject::close()
 {
-    if (file == nullptr) {
+    if (file == nullptr)
+    {
         throw std::runtime_error(
             "File is not open: " +
             path
@@ -219,6 +336,45 @@ RuntimeValue FileObject::close()
     isManual = false;
 
     return RuntimeValue(nullptr);
+}
+
+RuntimeValue FileObject::rename(
+    const std::string& newPath
+)
+{
+    if (newPath.empty())
+    {
+        throw std::runtime_error(
+            "File path cannot be empty."
+        );
+    }
+
+    if (
+        !std::filesystem::is_regular_file(
+            path
+        )
+    )
+    {
+        return RuntimeValue(
+            RTValue{false}
+        );
+    }
+
+    if (file != nullptr)
+    {
+        close();
+    }
+
+    std::filesystem::rename(
+        path,
+        newPath
+    );
+
+    path = newPath;
+
+    return RuntimeValue(
+        RTValue{true}
+    );
 }
 
 const std::string& FileObject::getPath() const noexcept
@@ -244,6 +400,20 @@ std::int64_t FileObject::getSize() const noexcept
 std::int64_t FileObject::getPosition() const noexcept
 {
     return position;
+}
+
+void FileObject::setPath(
+    const std::string& newPath
+)
+{
+    if (newPath.empty())
+    {
+        throw std::runtime_error(
+            "Runtime error: invalid filepath."
+        );
+    }
+
+    path = newPath;
 }
 
 std::int64_t FileObject::getNextLinePosition() const noexcept
@@ -296,6 +466,14 @@ RuntimeValue FileObject::load()
         );
     }
 
+    size =
+        static_cast<std::int64_t>(
+            fileSize
+        );
+
+    position = 0;
+    nextLinePosition = 0;
+
     if (
         std::fseek(
             readFile,
@@ -315,7 +493,9 @@ RuntimeValue FileObject::load()
     std::string result;
 
     result.resize(
-        static_cast<std::size_t>(fileSize)
+        static_cast<std::size_t>(
+            fileSize
+        )
     );
 
     if (!result.empty())
@@ -347,18 +527,6 @@ RuntimeValue FileObject::load()
         );
     }
 
-    //fast check
-    for (unsigned char byte : result)
-    {
-        if (byte > 127)
-        {
-            throw std::runtime_error(
-                "File is not ASCII: " +
-                path
-            );
-        }
-    }
-
     return RuntimeValue(
         std::move(result)
     );
@@ -368,16 +536,6 @@ RuntimeValue FileObject::save(
     const std::string& value
 )
 {
-    for (unsigned char byte : value)
-    {
-        if (byte > 127)
-        {
-            throw std::runtime_error(
-                "Attempted to save non-ASCII content."
-            );
-        }
-    }
-
     FILE* writeFile =
         std::fopen(
             path.c_str(),
@@ -424,7 +582,49 @@ RuntimeValue FileObject::save(
     return RuntimeValue(nullptr);
 }
 
-//f.read(size)
+RuntimeValue FileObject::write(
+    const std::string& value
+)
+{
+    if (file == nullptr)
+    {
+        throw std::runtime_error(
+            "File is not open."
+        );
+    }
+
+    if (mode == FileMode::READ)
+    {
+        throw std::runtime_error(
+            "File is not writable."
+        );
+    }
+
+    if (
+        std::fwrite(
+            value.data(),
+            1,
+            value.size(),
+            file
+        ) != value.size()
+    )
+    {
+        throw std::runtime_error(
+            "Failed to write to file."
+        );
+    }
+
+    position +=
+        static_cast<std::int64_t>(
+            value.size()
+        );
+
+    if (position > size)
+        size = position;
+
+    return RuntimeValue(nullptr);
+}
+
 RuntimeValue FileObject::read(
     std::int64_t requestedSize
 )
@@ -435,35 +635,49 @@ RuntimeValue FileObject::read(
     );
 }
 
-//f.read(size,pos)
 RuntimeValue FileObject::read(
     std::int64_t requestedSize,
     std::int64_t readPosition
 )
 {
     if (file == nullptr)
+    {
         throw std::runtime_error(
-            "File is not open: " + path
+            "File is not open: " +
+            path
         );
+    }
 
     if (requestedSize < 0)
+    {
         throw std::runtime_error(
             "File.read() size cannot be negative."
         );
+    }
 
     if (
         readPosition < 0 ||
         readPosition > size
     )
+    {
         throw std::runtime_error(
             "File.read() position out of bounds."
         );
+    }
 
     if (requestedSize == 0)
-        return RuntimeValue(std::string());
+    {
+        return RuntimeValue(
+            std::string()
+        );
+    }
 
     if (readPosition == size)
-        return RuntimeValue(std::string());
+    {
+        return RuntimeValue(
+            std::string()
+        );
+    }
 
     if (
         std::fseek(
@@ -472,9 +686,12 @@ RuntimeValue FileObject::read(
             SEEK_SET
         ) != 0
     )
+    {
         throw std::runtime_error(
-            "Failed to seek file: " + path
+            "Failed to seek file: " +
+            path
         );
+    }
 
     const std::int64_t remaining =
         size - readPosition;
@@ -488,7 +705,9 @@ RuntimeValue FileObject::read(
     std::string result;
 
     result.resize(
-        static_cast<std::size_t>(readSize)
+        static_cast<std::size_t>(
+            readSize
+        )
     );
 
     const std::size_t readCount =
@@ -508,14 +727,17 @@ RuntimeValue FileObject::read(
             clearerr(file);
 
             throw std::runtime_error(
-                "Failed to read file: " + path
+                "Failed to read file: " +
+                path
             );
         }
     }
 
     position =
         readPosition +
-        static_cast<std::int64_t>(readCount);
+        static_cast<std::int64_t>(
+            readCount
+        );
 
     return RuntimeValue(
         std::move(result)
@@ -538,27 +760,39 @@ RuntimeValue FileObject::search(
 )
 {
     if (file == nullptr)
+    {
         throw std::runtime_error(
-            "File is not open: " + path
+            "File is not open: " +
+            path
         );
+    }
 
     if (
         searchPosition < 0 ||
         searchPosition > size
     )
+    {
         throw std::runtime_error(
             "File.search() position out of bounds."
         );
+    }
 
     if (value.empty())
-        return RuntimeValue(searchPosition);
+    {
+        return RuntimeValue(
+            RTValue{searchPosition}
+        );
+    }
 
-    #define BLOCK_SIZE 8192
+    constexpr std::size_t BLOCK_SIZE =
+        8192;
 
     if (value.size() > BLOCK_SIZE)
+    {
         throw std::runtime_error(
             "File.search() search string is too large."
         );
+    }
 
     if (
         std::fseek(
@@ -567,17 +801,25 @@ RuntimeValue FileObject::search(
             SEEK_SET
         ) != 0
     )
+    {
         throw std::runtime_error(
-            "Failed to seek file: " + path
+            "Failed to seek file: " +
+            path
         );
+    }
 
-    std::array<char, BLOCK_SIZE * 2> buffer{}; //16kB
+    std::array<
+        char,
+        BLOCK_SIZE * 2
+    > buffer{};
 
     const std::size_t overlap =
         value.size() - 1;
 
     std::size_t carried = 0;
-    std::int64_t blockPosition = searchPosition;
+
+    std::int64_t blockPosition =
+        searchPosition;
 
     while (true)
     {
@@ -604,10 +846,11 @@ RuntimeValue FileObject::search(
                 );
             }
 
-            position = blockPosition;
+            position =
+                blockPosition;
 
             return RuntimeValue(
-                static_cast<int64_t>(-1)
+                RTValue{static_cast<std::int64_t>(-1)}
             );
         }
 
@@ -646,12 +889,16 @@ RuntimeValue FileObject::search(
                         value.size()
                     );
 
-                return RuntimeValue(result);
+                return RuntimeValue(
+                    RTValue{result}
+                );
             }
         }
 
         blockPosition +=
-            static_cast<std::int64_t>(readCount);
+            static_cast<std::int64_t>(
+                readCount
+            );
 
         if (available <= overlap)
         {
@@ -661,7 +908,8 @@ RuntimeValue FileObject::search(
                 available
             );
 
-            carried = available;
+            carried =
+                available;
         }
         else
         {
@@ -672,7 +920,8 @@ RuntimeValue FileObject::search(
                 overlap
             );
 
-            carried = overlap;
+            carried =
+                overlap;
         }
 
         if (readCount < BLOCK_SIZE)
@@ -687,30 +936,12 @@ RuntimeValue FileObject::search(
                 );
             }
 
-            position = blockPosition;
+            position =
+                blockPosition;
 
             return RuntimeValue(
-                static_cast<int64_t>(-1)
+                RTValue{static_cast<std::int64_t>(-1)}
             );
         }
     }
-}
-
-RuntimeValue FileObject::write(const std::string& value)
-{
-    if (file == nullptr)
-        throw std::runtime_error("File is not open.");
-
-    if (mode == FileMode::READ)
-        throw std::runtime_error("File is not writable.");
-
-    if (std::fwrite(value.data(), 1, value.size(), file) != value.size())
-        throw std::runtime_error("Failed to write to file.");
-
-    position += static_cast<std::int64_t>(value.size());
-
-    if (position > size)
-        size = position;
-
-    return RuntimeValue(nullptr);
 }

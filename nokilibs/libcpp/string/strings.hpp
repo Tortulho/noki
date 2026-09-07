@@ -33,6 +33,8 @@ namespace string
     RuntimeValue isempty(std::vector<RuntimeValue*>& args);
     RuntimeValue empty(std::vector<RuntimeValue*>& args);
     RuntimeValue pop(std::vector<RuntimeValue*>& args);
+    RuntimeValue isDigit(std::vector<RuntimeValue*>& args);
+    RuntimeValue isNum(std::vector<RuntimeValue*>& args);
 }
 
 Library createStringLibrary();

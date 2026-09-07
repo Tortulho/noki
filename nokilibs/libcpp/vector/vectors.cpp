@@ -83,6 +83,15 @@ public:
                 )
             }
         );
+
+        type->registerMethod(
+            "clear",
+            BuiltinEntry{
+                static_cast<BuiltinMutFunc>(
+                    vector::clear
+                )
+            }
+        );
     }
 };
 
@@ -367,6 +376,37 @@ namespace vector
                 vector->size()
             )
         );
+    }
+
+    RuntimeValue clear(std::vector<RuntimeValue*>& args)
+    {
+        if (args.size() != 1)
+            throw std::runtime_error(
+                "Syntax error: vector.clear() expects 0 arguments."
+            );
+
+        RuntimeValue* target = args[0];
+
+        if (target == nullptr)
+            throw std::runtime_error(
+                "Runtime error: vector.clear() received a null receiver."
+            );
+
+        if (!target->isVector())
+            throw std::runtime_error(
+                "Runtime error: vector.clear() receiver must be a vector."
+            );
+
+        RuntimeValue_Vector* vector = target->getVector();
+
+        if (vector == nullptr)
+            throw std::runtime_error(
+                "Runtime error: vector.clear() tried to clear a null vector."
+            );
+
+        vector->clear();
+
+        return RuntimeValue(nullptr);
     }
 
 }

@@ -39,6 +39,10 @@ namespace vector
     RuntimeValue size(
         std::vector<RuntimeValue*>& args
     );
+
+    RuntimeValue clear(
+        std::vector<RuntimeValue*>& args
+    );
 }
 
 Library createVectorLibrary();
