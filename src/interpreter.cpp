@@ -13,7 +13,7 @@ using TypeNode = ::TypeNode;
 #define LEFTPARTOFTREE children[0]
 #define RIGHTPARTOFTREE children[1]
 
-RuntimeValue* Interpreter::resolveLValue(const ASTNode& node)
+RuntimeValue* Interpreter::resolveLValue(const ASTNode& node, FlowControl& control)
 {
     if (node.getType() == TypeNode::VARIABLE)
     {
@@ -26,11 +26,17 @@ RuntimeValue* Interpreter::resolveLValue(const ASTNode& node)
     {
         if (node.children.size() != 2) return nullptr;
 
-        RuntimeValue* object = resolveLValue(*node.children[0]);
+        RuntimeValue* object = resolveLValue(*node.children[0], control);
 
-        if (object == nullptr) return nullptr;
+        if (object == nullptr || control == FlowControl::EXIT) return nullptr;
 
         EvalResult indexResult = eval(*node.children[1]);
+
+        if (indexResult.control == FlowControl::EXIT)
+        {
+            control = FlowControl::EXIT;
+            return nullptr;
+        }
 
         if (indexResult.control != FlowControl::NONE)
         {
@@ -197,7 +203,10 @@ EvalResult Interpreter::eval(const ASTNode& node)
         }
 
         case TypeNode::EXIT:
-            std::exit(EXIT_SUCCESS);
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
 
         default:
             return {RuntimeValue(nullptr),FlowControl::NONE};
@@ -406,10 +415,15 @@ EvalResult Interpreter::evalBinary(const ASTNode& node) {
 EvalResult Interpreter::evalAssign(const ASTNode& node)
 {
     auto resultvalue = eval(*node.RIGHTPARTOFTREE);
+
+    if (resultvalue.control == FlowControl::EXIT)
+        return resultvalue;
+
     if (resultvalue.control != FlowControl::NONE)
         throw std::runtime_error(
             "Invalid control flow inside assignment expression."
         );
+
     RuntimeValue value = std::move(resultvalue.value);
 
     const ASTNode& target = *node.LEFTPARTOFTREE;
@@ -426,22 +440,33 @@ EvalResult Interpreter::evalAssign(const ASTNode& node)
             );
         }
 
-        return {value,FlowControl::NONE};
+        return {value, FlowControl::NONE};
     }
 
     if (target.getType() == TypeNode::INDEX)
     {
-        RuntimeValue* targetValue = resolveLValue(target);
+        FlowControl control = FlowControl::NONE;
+
+        RuntimeValue* targetValue =
+            resolveLValue(target, control);
+
+        if (control == FlowControl::EXIT)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
+        }
 
         if (targetValue == nullptr)
-            return {RuntimeValue(nullptr),FlowControl::NONE};
+            return {RuntimeValue(nullptr), FlowControl::NONE};
 
         *targetValue = std::move(value);
 
-        return {*targetValue,FlowControl::NONE};
+        return {*targetValue, FlowControl::NONE};
     }
 
-    return {RuntimeValue(nullptr),FlowControl::NONE};
+    return {RuntimeValue(nullptr), FlowControl::NONE};
 }
 
 //dps ao implementar arrays tem que ser diferente
@@ -483,128 +508,168 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
         /*
          * Primeiro tentamos a resolução C++ existente.
          */
-        const BuiltinEntry* entry =
-            builtin::findFunction(name);
+        const BuiltinEntry* entry = builtin::findFunction(name);
 
         if (entry != nullptr)
-        {
-            RuntimeValue result =
-                std::visit(
-                    [&](const auto& func) -> RuntimeValue
-                    {
-                        using T =
-                            std::decay_t<decltype(func)>;
+{
+    FlowControl callControl = FlowControl::NONE;
 
-                        if constexpr (
-                            std::is_same_v<T, BuiltinFunc>
+    RuntimeValue result =
+        std::visit(
+            [&](const auto& func) -> RuntimeValue
+            {
+                using T =
+                    std::decay_t<decltype(func)>;
+
+                if constexpr (
+                    std::is_same_v<T, BuiltinFunc>
+                )
+                {
+                    std::vector<RuntimeValue> args;
+
+                    args.reserve(
+                        node.children.size() - 1
+                    );
+
+                    for (size_t i = 1;
+                         i < node.children.size();
+                         ++i)
+                    {
+                        EvalResult argument =
+                            eval(*node.children[i]);
+
+                        if (
+                            argument.control ==
+                            FlowControl::EXIT
                         )
                         {
-                            std::vector<RuntimeValue> args;
+                            callControl =
+                                FlowControl::EXIT;
 
-                            args.reserve(
-                                node.children.size() - 1
+                            return RuntimeValue(nullptr);
+                        }
+
+                        if (
+                            argument.control !=
+                            FlowControl::NONE
+                        )
+                        {
+                            throw std::runtime_error(
+                                "Invalid control flow in "
+                                "function argument."
+                            );
+                        }
+
+                        args.push_back(
+                            std::move(argument.value)
+                        );
+                    }
+
+                    return func(args);
+                }
+                else if constexpr (
+                    std::is_same_v<T, BuiltinMutFunc>
+                )
+                {
+                    std::vector<RuntimeValue> temporaries;
+                    std::vector<RuntimeValue*> args;
+
+                    temporaries.reserve(
+                        node.children.size() - 1
+                    );
+
+                    args.reserve(
+                        node.children.size() - 1
+                    );
+
+                    for (size_t i = 1;
+                         i < node.children.size();
+                         ++i)
+                    {
+                        FlowControl lvalueControl =
+                            FlowControl::NONE;
+
+                        RuntimeValue* reference =
+                            resolveLValue(
+                                *node.children[i],
+                                lvalueControl
                             );
 
-                            for (size_t i = 1;
-                                 i < node.children.size();
-                                 ++i)
+                        if (
+                            lvalueControl ==
+                            FlowControl::EXIT
+                        )
+                        {
+                            callControl =
+                                FlowControl::EXIT;
+
+                            return RuntimeValue(nullptr);
+                        }
+
+                        if (reference != nullptr)
+                        {
+                            args.push_back(reference);
+                        }
+                        else
+                        {
+                            EvalResult argument =
+                                eval(*node.children[i]);
+
+                            if (
+                                argument.control ==
+                                FlowControl::EXIT
+                            )
                             {
-                                EvalResult argument =
-                                    eval(*node.children[i]);
+                                callControl =
+                                    FlowControl::EXIT;
 
-                                if (
-                                    argument.control !=
-                                    FlowControl::NONE
-                                )
-                                {
-                                    throw std::runtime_error(
-                                        "Invalid control flow in "
-                                        "function argument."
-                                    );
-                                }
+                                return RuntimeValue(nullptr);
+                            }
 
-                                args.push_back(
-                                    std::move(argument.value)
+                            if (
+                                argument.control !=
+                                FlowControl::NONE
+                            )
+                            {
+                                throw std::runtime_error(
+                                    "Invalid control flow in "
+                                    "function argument."
                                 );
                             }
 
-                            return func(args);
-                        }
-                        else if constexpr (
-                            std::is_same_v<T, BuiltinMutFunc>
-                        )
-                        {
-                            std::vector<RuntimeValue> temporaries;
-                            std::vector<RuntimeValue*> args;
-
-                            temporaries.reserve(
-                                node.children.size() - 1
+                            temporaries.push_back(
+                                std::move(argument.value)
                             );
 
-                            args.reserve(
-                                node.children.size() - 1
+                            args.push_back(
+                                &temporaries.back()
                             );
-
-                            for (size_t i = 1;
-                                 i < node.children.size();
-                                 ++i)
-                            {
-                                RuntimeValue* reference =
-                                    resolveLValue(
-                                        *node.children[i]
-                                    );
-
-                                if (reference != nullptr)
-                                {
-                                    args.push_back(
-                                        reference
-                                    );
-                                }
-                                else
-                                {
-                                    EvalResult argument =
-                                        eval(*node.children[i]);
-
-                                    if (
-                                        argument.control !=
-                                        FlowControl::NONE
-                                    )
-                                    {
-                                        throw std::runtime_error(
-                                            "Invalid control flow "
-                                            "in function argument."
-                                        );
-                                    }
-
-                                    temporaries.push_back(
-                                        std::move(
-                                            argument.value
-                                        )
-                                    );
-
-                                    args.push_back(
-                                        &temporaries.back()
-                                    );
-                                }
-                            }
-
-                            return func(args);
                         }
-                    },
-                    entry->function
-                );
+                    }
 
-            return {
-                std::move(result),
-                FlowControl::NONE
-            };
-        }
+                    return func(args);
+                }
+            },
+            entry->function
+        );
 
+    if (callControl == FlowControl::EXIT)
+    {
+        return {
+            RuntimeValue(nullptr),
+            FlowControl::EXIT
+        };
+    }
+
+    return {
+        std::move(result),
+        FlowControl::NONE
+    };
+}
         /*
          * Depois tentamos uma função Noki local.
          */
-        NokiFunction* nokiFunction =
-            runtime.current->findNokiFunction(name);
+        NokiFunction* nokiFunction = runtime.current->findNokiFunction(name);
 
         if (nokiFunction != nullptr)
         {
@@ -628,9 +693,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             }
 
             /*
-             * Avaliar e/ou resolver os argumentos antes de
-             * criar o environment da função.
-             */
+            * Avaliar e/ou resolver os argumentos antes de
+            * criar o environment da função.
+            */
             std::vector<RuntimeValue> argumentValues;
 
             argumentValues.resize(argumentCount);
@@ -643,8 +708,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             );
 
             for (size_t i = 0;
-                 i < parameters.size();
-                 ++i)
+                i < parameters.size();
+                ++i)
             {
                 const FunctionParameter& parameter =
                     parameters[i];
@@ -657,8 +722,18 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                     FunctionParameterMode::MUT
                 )
                 {
+                    FlowControl control = FlowControl::NONE;
+
                     RuntimeValue* reference =
-                        resolveLValue(argumentNode);
+                        resolveLValue(argumentNode, control);
+
+                    if (control == FlowControl::EXIT)
+                    {
+                        return {
+                            RuntimeValue(nullptr),
+                            FlowControl::EXIT
+                        };
+                    }
 
                     if (reference == nullptr)
                     {
@@ -679,6 +754,11 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                     EvalResult argument =
                         eval(argumentNode);
 
+                    if (argument.control == FlowControl::EXIT)
+                    {
+                        return argument;
+                    }
+
                     if (
                         argument.control !=
                         FlowControl::NONE
@@ -696,11 +776,11 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             }
 
             /*
-             * Validar os tipos dos parâmetros.
-             */
+            * Validar os tipos dos parâmetros.
+            */
             for (size_t i = 0;
-                 i < parameters.size();
-                 ++i)
+                i < parameters.size();
+                ++i)
             {
                 ASTNode::TypeNode expectedType =
                     parameters[i].getType();
@@ -800,16 +880,16 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             }
 
             /*
-             * Criar o environment da chamada.
-             */
+            * Criar o environment da chamada.
+            */
             runtime.pushEnvironment();
 
             /*
-             * Fazer o binding dos parâmetros.
-             */
+            * Fazer o binding dos parâmetros.
+            */
             for (size_t i = 0;
-                 i < parameters.size();
-                 ++i)
+                i < parameters.size();
+                ++i)
             {
                 const FunctionParameter& parameter =
                     parameters[i];
@@ -844,19 +924,28 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             }
 
             /*
-             * Executar o body da função.
-             *
-             * evalBlock() cria o seu próprio scope,
-             * mantendo o environment da função como parent.
-             */
+            * Executar o body da função.
+            *
+            * evalBlock() cria o seu próprio scope,
+            * mantendo o environment da função como parent.
+            */
             EvalResult result =
                 eval(nokiFunction->getBody());
 
             runtime.popEnvironment();
 
             /*
-             * RETURN pertence à função e é consumido aqui.
-             */
+            * EXIT propaga-se depois de remover o environment
+            * desta chamada.
+            */
+            if (result.control == FlowControl::EXIT)
+            {
+                return result;
+            }
+
+            /*
+            * RETURN pertence à função e é consumido aqui.
+            */
             if (result.control == FlowControl::RETURN)
             {
                 return {
@@ -866,9 +955,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             }
 
             /*
-             * BREAK/CONTINUE não podem escapar de uma função.
-             * Devem ter sido consumidos por um while.
-             */
+            * BREAK/CONTINUE não podem escapar de uma função.
+            * Devem ter sido consumidos por um while.
+            */
             if (
                 result.control == FlowControl::BREAK ||
                 result.control == FlowControl::CONTINUE
@@ -881,8 +970,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             }
 
             /*
-             * Função terminou sem return explícito.
-             */
+            * Função terminou sem return explícito.
+            */
             return {
                 RuntimeValue(nullptr),
                 FlowControl::NONE
@@ -923,8 +1012,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
         );
 
         /*
-         * Primeiro verificamos se o receiver é uma Library Noki.
-         */
+        * Primeiro verificamos se o receiver é uma Library Noki.
+        */
         if (objectNode.getType() == TypeNode::VARIABLE)
         {
             const std::string libraryName(
@@ -1002,8 +1091,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         }
 
                         /*
-                         * Os argumentos pertencem ao ambiente do caller.
-                         */
+                        * Os argumentos pertencem ao ambiente do caller.
+                        */
                         std::vector<RuntimeValue> argumentValues;
 
                         argumentValues.resize(
@@ -1019,8 +1108,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         );
 
                         for (size_t i = 0;
-                             i < parameters.size();
-                             ++i)
+                            i < parameters.size();
+                            ++i)
                         {
                             const FunctionParameter& parameter =
                                 parameters[i];
@@ -1033,10 +1122,22 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                 FunctionParameterMode::MUT
                             )
                             {
+                                FlowControl control =
+                                    FlowControl::NONE;
+
                                 RuntimeValue* reference =
                                     resolveLValue(
-                                        argumentNode
+                                        argumentNode,
+                                        control
                                     );
+
+                                if (control == FlowControl::EXIT)
+                                {
+                                    return {
+                                        RuntimeValue(nullptr),
+                                        FlowControl::EXIT
+                                    };
+                                }
 
                                 if (reference == nullptr)
                                 {
@@ -1058,6 +1159,14 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                     eval(argumentNode);
 
                                 if (
+                                    argument.control ==
+                                    FlowControl::EXIT
+                                )
+                                {
+                                    return argument;
+                                }
+
+                                if (
                                     argument.control !=
                                     FlowControl::NONE
                                 )
@@ -1076,11 +1185,11 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         }
 
                         /*
-                         * Validar os tipos dos parâmetros.
-                         */
+                        * Validar os tipos dos parâmetros.
+                        */
                         for (size_t i = 0;
-                             i < parameters.size();
-                             ++i)
+                            i < parameters.size();
+                            ++i)
                         {
                             ASTNode::TypeNode expectedType =
                                 parameters[i].getType();
@@ -1187,9 +1296,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         }
 
                         /*
-                         * Guard para trocar temporariamente para o
-                         * environment da library.
-                         */
+                        * Guard para trocar temporariamente para o
+                        * environment da library.
+                        */
                         struct EnvironmentSwitchGuard
                         {
                             Runtime& runtime;
@@ -1200,7 +1309,7 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                 Environment* environment
                             )
                                 : runtime(runtime),
-                                  previous(runtime.current)
+                                previous(runtime.current)
                             {
                                 runtime.current =
                                     environment;
@@ -1214,9 +1323,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         };
 
                         /*
-                         * Guard para criar e remover o environment
-                         * da chamada da função.
-                         */
+                        * Guard para criar e remover o environment
+                        * da chamada da função.
+                        */
                         struct EnvironmentPushGuard
                         {
                             Runtime& runtime;
@@ -1236,29 +1345,29 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         };
 
                         /*
-                         * O environment do módulo passa a ser o
-                         * environment atual.
-                         */
+                        * O environment do módulo passa a ser o
+                        * environment atual.
+                        */
                         EnvironmentSwitchGuard moduleGuard(
                             runtime,
                             moduleEnvironment
                         );
 
                         /*
-                         * Criar o environment da chamada.
-                         *
-                         * O parent será o Environment do módulo.
-                         */
+                        * Criar o environment da chamada.
+                        *
+                        * O parent será o Environment do módulo.
+                        */
                         EnvironmentPushGuard functionGuard(
                             runtime
                         );
 
                         /*
-                         * Fazer o binding dos parâmetros.
-                         */
+                        * Fazer o binding dos parâmetros.
+                        */
                         for (size_t i = 0;
-                             i < parameters.size();
-                             ++i)
+                            i < parameters.size();
+                            ++i)
                         {
                             const FunctionParameter& parameter =
                                 parameters[i];
@@ -1297,16 +1406,21 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         }
 
                         /*
-                         * Executar o body da função.
-                         */
+                        * Executar o body da função.
+                        */
                         EvalResult result =
                             eval(
                                 nokiFunction->getBody()
                             );
 
+                        if (result.control == FlowControl::EXIT)
+                        {
+                            return result;
+                        }
+
                         /*
-                         * RETURN pertence à função e é consumido aqui.
-                         */
+                        * RETURN pertence à função e é consumido aqui.
+                        */
                         if (
                             result.control ==
                             FlowControl::RETURN
@@ -1319,9 +1433,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         }
 
                         /*
-                         * BREAK/CONTINUE não podem escapar
-                         * de uma função.
-                         */
+                        * BREAK/CONTINUE não podem escapar
+                        * de uma função.
+                        */
                         if (
                             result.control ==
                                 FlowControl::BREAK ||
@@ -1336,8 +1450,8 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         }
 
                         /*
-                         * Função terminou sem return explícito.
-                         */
+                        * Função terminou sem return explícito.
+                        */
                         return {
                             RuntimeValue(nullptr),
                             FlowControl::NONE
@@ -1348,17 +1462,31 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
         }
 
         /*
-         * Resolver o receiver.
-         */
+        * Resolver o receiver.
+        */
+        FlowControl receiverControl =
+            FlowControl::NONE;
+
         RuntimeValue* receiver =
-            resolveLValue(objectNode);
+            resolveLValue(
+                objectNode,
+                receiverControl
+            );
+
+        if (receiverControl == FlowControl::EXIT)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
+        }
 
         if (receiver != nullptr)
         {
             /*
-             * RuntimeObject:
-             * usar exclusivamente o sistema de objetos existente.
-             */
+            * RuntimeObject:
+            * usar exclusivamente o sistema de objetos existente.
+            */
             if (receiver->isObject())
             {
                 RuntimeObject* object =
@@ -1392,6 +1520,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
 
                 if (method != nullptr)
                 {
+                    FlowControl callControl =
+                        FlowControl::NONE;
+
                     RuntimeValue result =
                         std::visit(
                             [&](const auto& func)
@@ -1431,6 +1562,17 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                             eval(
                                                 *node.children[i]
                                             );
+
+                                        if (
+                                            argument.control ==
+                                            FlowControl::EXIT
+                                        )
+                                        {
+                                            callControl =
+                                                FlowControl::EXIT;
+
+                                            return RuntimeValue(nullptr);
+                                        }
 
                                         if (
                                             argument.control !=
@@ -1485,10 +1627,25 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                         ++i
                                     )
                                     {
+                                        FlowControl lvalueControl =
+                                            FlowControl::NONE;
+
                                         RuntimeValue* reference =
                                             resolveLValue(
-                                                *node.children[i]
+                                                *node.children[i],
+                                                lvalueControl
                                             );
+
+                                        if (
+                                            lvalueControl ==
+                                            FlowControl::EXIT
+                                        )
+                                        {
+                                            callControl =
+                                                FlowControl::EXIT;
+
+                                            return RuntimeValue(nullptr);
+                                        }
 
                                         if (
                                             reference != nullptr
@@ -1504,6 +1661,17 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                                 eval(
                                                     *node.children[i]
                                                 );
+
+                                            if (
+                                                argument.control ==
+                                                FlowControl::EXIT
+                                            )
+                                            {
+                                                callControl =
+                                                    FlowControl::EXIT;
+
+                                                return RuntimeValue(nullptr);
+                                            }
 
                                             if (
                                                 argument.control !=
@@ -1534,6 +1702,14 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                             method->function
                         );
 
+                    if (callControl == FlowControl::EXIT)
+                    {
+                        return {
+                            RuntimeValue(nullptr),
+                            FlowControl::EXIT
+                        };
+                    }
+
                     return {
                         std::move(result),
                         FlowControl::NONE
@@ -1541,9 +1717,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                 }
             }
             /*
-             * RuntimeValue intrínseco:
-             * resolver pelo RuntimeValueTypeID.
-             */
+            * RuntimeValue intrínseco:
+            * resolver pelo RuntimeValueTypeID.
+            */
             else
             {
                 const RuntimeValueTypeID typeID =
@@ -1569,6 +1745,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
 
                 if (method != nullptr)
                 {
+                    FlowControl callControl =
+                        FlowControl::NONE;
+
                     RuntimeValue result =
                         std::visit(
                             [&](const auto& func)
@@ -1608,6 +1787,17 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                             eval(
                                                 *node.children[i]
                                             );
+
+                                        if (
+                                            argument.control ==
+                                            FlowControl::EXIT
+                                        )
+                                        {
+                                            callControl =
+                                                FlowControl::EXIT;
+
+                                            return RuntimeValue(nullptr);
+                                        }
 
                                         if (
                                             argument.control !=
@@ -1662,10 +1852,25 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                         ++i
                                     )
                                     {
+                                        FlowControl lvalueControl =
+                                            FlowControl::NONE;
+
                                         RuntimeValue* reference =
                                             resolveLValue(
-                                                *node.children[i]
+                                                *node.children[i],
+                                                lvalueControl
                                             );
+
+                                        if (
+                                            lvalueControl ==
+                                            FlowControl::EXIT
+                                        )
+                                        {
+                                            callControl =
+                                                FlowControl::EXIT;
+
+                                            return RuntimeValue(nullptr);
+                                        }
 
                                         if (
                                             reference != nullptr
@@ -1681,6 +1886,17 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                                 eval(
                                                     *node.children[i]
                                                 );
+
+                                            if (
+                                                argument.control ==
+                                                FlowControl::EXIT
+                                            )
+                                            {
+                                                callControl =
+                                                    FlowControl::EXIT;
+
+                                                return RuntimeValue(nullptr);
+                                            }
 
                                             if (
                                                 argument.control !=
@@ -1711,6 +1927,14 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                             method->function
                         );
 
+                    if (callControl == FlowControl::EXIT)
+                    {
+                        return {
+                            RuntimeValue(nullptr),
+                            FlowControl::EXIT
+                        };
+                    }
+
                     return {
                         std::move(result),
                         FlowControl::NONE
@@ -1720,9 +1944,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
         }
 
         /*
-         * Não era RuntimeObject nem RuntimeValue:
-         * continuar com o mecanismo atual de biblioteca C++.
-         */
+        * Não era RuntimeObject nem RuntimeValue:
+        * continuar com o mecanismo atual de biblioteca C++.
+        */
         const ASTNode& libraryNode =
             objectNode;
 
@@ -1780,6 +2004,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             );
         }
 
+        FlowControl callControl =
+            FlowControl::NONE;
+
         RuntimeValue result =
             std::visit(
                 [&](const auto& func) -> RuntimeValue
@@ -1812,6 +2039,17 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                 eval(
                                     *node.children[i]
                                 );
+
+                            if (
+                                argument.control ==
+                                FlowControl::EXIT
+                            )
+                            {
+                                callControl =
+                                    FlowControl::EXIT;
+
+                                return RuntimeValue(nullptr);
+                            }
 
                             if (
                                 argument.control !=
@@ -1862,10 +2100,25 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                             ++i
                         )
                         {
+                            FlowControl lvalueControl =
+                                FlowControl::NONE;
+
                             RuntimeValue* reference =
                                 resolveLValue(
-                                    *node.children[i]
+                                    *node.children[i],
+                                    lvalueControl
                                 );
+
+                            if (
+                                lvalueControl ==
+                                FlowControl::EXIT
+                            )
+                            {
+                                callControl =
+                                    FlowControl::EXIT;
+
+                                return RuntimeValue(nullptr);
+                            }
 
                             if (reference != nullptr)
                             {
@@ -1879,6 +2132,17 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                                     eval(
                                         *node.children[i]
                                     );
+
+                                if (
+                                    argument.control ==
+                                    FlowControl::EXIT
+                                )
+                                {
+                                    callControl =
+                                        FlowControl::EXIT;
+
+                                    return RuntimeValue(nullptr);
+                                }
 
                                 if (
                                     argument.control !=
@@ -1908,6 +2172,14 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                 },
                 it->second.function
             );
+
+        if (callControl == FlowControl::EXIT)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
+        }
 
         return {
             std::move(result),
@@ -1944,9 +2216,7 @@ EvalResult Interpreter::evalUni(const ASTNode& node) {
 
 }
 
-EvalResult Interpreter::evalMove(
-    const ASTNode& node
-)
+EvalResult Interpreter::evalMove(const ASTNode& node)
 {
     if (node.children.size() != 2)
     {
@@ -2070,6 +2340,7 @@ EvalResult Interpreter::evalBlock(const ASTNode& node)
     for (const auto& child : node.children)
     {
         result = eval(*child);
+
         if (result.control != FlowControl::NONE)
         {
             runtime.popEnvironment();
@@ -2089,12 +2360,15 @@ EvalResult Interpreter::evalIf(const ASTNode& node)
     /*
     caso nao seja bool caira sempre para o null pq todas as comparaçoes dao bool  
     */
+    
+    if (cond.control == FlowControl::EXIT) return cond;
+
     if (cond.control != FlowControl::NONE)
     {
         throw std::runtime_error(
             "Invalid control flow in if condition."
         );
-    }
+    }    
 
     bool result = false; //deixar inicializado por padrao
 
@@ -2126,10 +2400,11 @@ EvalResult Interpreter::evalWhile(const ASTNode& node)
         FlowControl::NONE
     };
 
-    EvalResult condition =
-        eval(*node.children[0]);
+    EvalResult cond = eval(*node.children[0]);
 
-    if (condition.control != FlowControl::NONE)
+    if (cond.control == FlowControl::EXIT) return cond;
+
+    if (cond.control != FlowControl::NONE)
     {
         throw std::runtime_error(
             "Invalid control flow in while condition."
@@ -2138,7 +2413,7 @@ EvalResult Interpreter::evalWhile(const ASTNode& node)
 
     while (
         RuntimeValue::runtimeValueToBool(
-            condition.value
+            cond.value
         )
     )
     {
@@ -2154,10 +2429,11 @@ EvalResult Interpreter::evalWhile(const ASTNode& node)
 
         if (result.control == FlowControl::CONTINUE)
         {
-            condition =
-                eval(*node.children[0]);
+            cond = eval(*node.children[0]);
 
-            if (condition.control != FlowControl::NONE)
+            if (cond.control == FlowControl::EXIT) return cond;
+
+            if (cond.control != FlowControl::NONE)
             {
                 throw std::runtime_error(
                     "Invalid control flow in while condition."
@@ -2172,10 +2448,11 @@ EvalResult Interpreter::evalWhile(const ASTNode& node)
             return result;
         }
 
-        condition =
-            eval(*node.children[0]);
+        cond = eval(*node.children[0]);
 
-        if (condition.control != FlowControl::NONE)
+        if (cond.control == FlowControl::EXIT) return cond;
+
+        if (cond.control != FlowControl::NONE)
         {
             throw std::runtime_error(
                 "Invalid control flow in while condition."

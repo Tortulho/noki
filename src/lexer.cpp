@@ -1,6 +1,29 @@
 #include "lexer.hpp"
 #include <vector>
 
+
+/*
+
+set x to value
+let x to value
+
+set x = 30
+{SET_TOKEN, IDENTIFIER_TOKEN, EQUAL_TOKEN, INT_TOKEN}
+
+x = 30
+{IDENTIFIER_TOKEN, EQUAL_TOKEN, INT_TOKEN}
+
+y1 = "abcdef"
+{IDENTIFIER_TOKEN, EQUAL_TOKEN, STRING_TOKEN}
+
+se tivermos um identifier token seguido de um equal token trata-se de uma atribuiçao
+se houver o identifier no dictVar é uma atribuiçao à variavel
+senao criar uma nova 
+
+
+
+*/
+
 Token::TokenType isReserved(std::string_view tokenstr) {
 
     for (size_t idx = 0; idx < sizeof(KEYWORDS) / sizeof(KEYWORD); idx++) {

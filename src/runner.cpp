@@ -3,7 +3,9 @@
 #include "parser.hpp"
 #include "interpreter.hpp"
 
-RuntimeValue Runner::run(const std::string& source) {
+#define EVR_NULL {RuntimeValue(nullptr),FlowControl::NONE}
+
+EvalResult Runner::run(const std::string& source) {
     
     std::vector<Token> tokens;
     Token::tokenize(source, tokens);
@@ -17,7 +19,7 @@ RuntimeValue Runner::run(const std::string& source) {
 
     if (node == nullptr) {
         std::cout << "ERROR: Critical error at parsing.\n";
-        return RuntimeValue(nullptr);
+        return EVR_NULL;
     }
 
     // DEBUG
@@ -26,6 +28,11 @@ RuntimeValue Runner::run(const std::string& source) {
 
     EvalResult result = Interpreter::eval(*node);
 
+    if (result.control == FlowControl::EXIT)
+    {
+        return result;
+    }
+
     if (result.control != FlowControl::NONE)
     {
         throw std::runtime_error(
@@ -33,5 +40,5 @@ RuntimeValue Runner::run(const std::string& source) {
         );
     }
 
-    return std::move(result.value);
+    return result;
 }
