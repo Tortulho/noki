@@ -35,13 +35,13 @@ class RuntimeValue_Vector {
             return values.size();
         }
 
-        RuntimeValue& at(size_t index) {
+        RuntimeValue& at(int64_t index) {
             if (index < 0) index = values.size()+index;
             if (index > values.size())
                 throw std::out_of_range("Vector index out of bounds");
             return values.at(index);
         }
-        const RuntimeValue& at(size_t index) const {
+        const RuntimeValue& at(int64_t index) const {
             if (index < 0) index = values.size()+index;
             if (index > values.size())
                 throw std::out_of_range("Vector index out of bounds");
@@ -52,7 +52,7 @@ class RuntimeValue_Vector {
             values.push_back(std::move(value));
         }
 
-        void insert(size_t index, RuntimeValue value) {
+        void insert(int64_t index, RuntimeValue value) {
             if (index < 0) index = values.size()+index;
             if (index > values.size())
                 throw std::out_of_range("Vector index out of bounds");
@@ -63,7 +63,7 @@ class RuntimeValue_Vector {
             );
         }
 
-        void pop(size_t index) {
+        void pop(int64_t index) {
             if (index < 0) index = values.size()+index;
             if (index > values.size())
                 throw std::out_of_range("Vector index out of bounds");
@@ -116,8 +116,9 @@ class RuntimeValue_Vector {
             return -1;
         }
 
-        
-
+        void clear() {
+            values.clear();
+        }
 
 };
 

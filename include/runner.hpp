@@ -2,12 +2,12 @@
 #define RUNNER_HPP
 
 #include <string>
-#include "runtimeval.hpp"
+#include "interpreter.hpp"
 
 class Runner
 {
 public:
-    static RuntimeValue run(const std::string& source);
+    static EvalResult run(const std::string& source);
 };
 
 #endif

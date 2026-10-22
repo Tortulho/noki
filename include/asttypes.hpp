@@ -48,6 +48,8 @@ enum TypeNode {
 
     ANYVALUE,
 
+    EXIT,
+
     INVALID,
 };
 

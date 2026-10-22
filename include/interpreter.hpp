@@ -1,3 +1,6 @@
+#ifndef INTERPRETER
+#define INTERPRETER
+
 #include "runtime/runtimeval.hpp"
 #include "runtime/runtime.hpp"
 #include "ast.hpp"
@@ -9,6 +12,7 @@ enum class FlowControl
     CONTINUE,
     RETURN,
     INVALID,
+    EXIT,
 };
 
 struct EvalResult
@@ -34,8 +38,10 @@ class Interpreter {
         static EvalResult  evalMemberAccess(const ASTNode& node);
         static EvalResult  evalVector(const ASTNode& node);
         static EvalResult  evalIndex(const ASTNode& node);
-        static RuntimeValue* resolveLValue(const ASTNode& node);
+        static RuntimeValue* resolveLValue(const ASTNode& node, FlowControl& control);
         static EvalResult  evalFuncDecl(const ASTNode& node);
         static EvalResult evalMove(const ASTNode& node);
 
 };
+
+#endif

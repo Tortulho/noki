@@ -34,11 +34,12 @@ class builtin {
         static RuntimeValue toFloat(const std::vector<RuntimeValue>& args);
         static RuntimeValue toString(const std::vector<RuntimeValue>& args);
 
-        static RuntimeValue Vecpushback(std::vector<RuntimeValue*>& args);
-        static RuntimeValue Vecinsert(std::vector<RuntimeValue*>& args);
-        static RuntimeValue Vecpop(std::vector<RuntimeValue*>& args);
-        static RuntimeValue Vecremove(std::vector<RuntimeValue*>& args);
-        static RuntimeValue Vecfind(const std::vector<RuntimeValue>& args);
+        static RuntimeValue type(const std::vector<RuntimeValue>& args);
+        static RuntimeValue isInt(const std::vector<RuntimeValue>& args);
+        static RuntimeValue isFloat(const std::vector<RuntimeValue>& args);
+        static RuntimeValue isString(const std::vector<RuntimeValue>& args);
+        static RuntimeValue isBool(const std::vector<RuntimeValue>& args);
+        static RuntimeValue isNull(const std::vector<RuntimeValue>& args);
 
     public:
         //static const std::unordered_map<std::string, BuiltinFunc> funcs;
