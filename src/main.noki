@@ -1,0 +1,130 @@
+import file
+import vector
+import string
+
+import dados
+
+pathname = "alunos.txt"
+alunos = []
+
+func menu() {
+
+    println("Menu:")
+    println("0 - Sair")
+    println("1 - Introduzir novo aluno")
+    println("2 - Eliminar aluno existente")
+    println("3 - Listar todos os alunos")
+    println("4 - Efetuar uma despesa por um aluno")
+    println("5 - Carregar a conta do aluno com um valor")
+    println("6 - Alterar nome de ficheiro")
+    println("7 - Guardar ficheiro como")
+    println("8 - Ler ficheiro")
+    println("")
+
+}
+
+#vec: despesa: string: descritivo, float: valor, time: data
+#vec: aluno: string: nome, string: nomecurso, time: data_nascimento, int: numero_aluno, int: numero_ano, float: saldo, vec: despesas
+#vec: alunos
+
+
+#TODO: PERMITIR EM FLOWCONTROL GOTO:
+#op: goto $STRING
+#token GOTO, ao encontrar $ 
+#caso esteja numa string ja "... $" nao faz nada
+
+### START ###
+
+#ler o ficheiro
+
+#verificar se existe primeiro
+println("Iniciando programa.")
+fdata <- file.open(pathname,"r")
+if (fdata.isNull()) {
+    println("Erro ao abrir ficheiro base.")
+    println("Será criado um ficheiro temporário")
+    fdata <- file.open("temp.txt","w")
+    if (fdata.isNull()) {
+        println("Erro ao iniciar o ficheiro.")
+        exit
+    }
+}
+fdata.close()
+
+if !dados.lerAlunos(alunos,pathname) {
+    println("Erro ao ler dados do ficheiro.")
+}
+
+# bloco principal
+
+while true {
+
+    menu()
+    print("Indique a operação: ")
+    in <- getInput()
+    println("")
+    if (!in.isDigit()) {
+        println("Insira a opção novamente.")
+        continue
+    }
+    in = int(in)
+    if (in < 0 || in > 8) {
+        println("Insira a opção novamente.")
+        continue
+    }
+    if (in == 0) {
+        println("Saindo do programa")
+        #fp.close() #forçar fechar
+        #println("x")
+        exit
+    }
+    if (in == 1) {
+        if (dados.addAluno(alunos)) {
+            dados.guardarAlunos(alunos,pathname)
+        }
+        continue
+    }
+    if (in == 2) {
+        if (dados.removerAluno(alunos)) {
+            dados.guardarAlunos(alunos,pathname)
+        }
+        continue
+    }
+    if (in == 3) {
+        dados.listarAlunos(alunos)
+        continue
+    }
+    if (in == 4) {
+        if (dados.adicionarDespesa(alunos)) {
+            dados.guardarAlunos(alunos,pathname)
+        }
+        continue
+    }
+    if (in == 5) {
+        if (dados.adicionarSaldo(alunos)) {
+            dados.guardarAlunos(alunos,pathname)
+        }
+        continue
+    }
+    if (in == 6) {
+        dados.mudarPathname(pathname)
+        continue
+    }
+    if (in == 7) {
+        temppath = pathname
+        dados.mudarPathname(temppath)
+        dados.guardarAlunos(alunos,temppath)
+        continue
+    }
+    if (in == 8) {
+        println("A ler ficheiro...")
+        if (!dados.lerAlunos(alunos,pathname)) {
+            println("O ficheiro '" + pathname + "' tem dados corrompidos.")
+            println("Os dados poderão ter erros, por favor tente outro ficheiro.")
+            dados.guardarAlunos(alunos,"dumpfilereadingerror.txt")
+        }
+        continue
+    }
+    
+
+}
