@@ -2,6 +2,9 @@
 #include <unordered_map>
 #include <string>
 #include "runtimeval.hpp"
+#include <algorithm>
+#include <stdexcept>
+#include <utility>
 
 RuntimeValue* Environment::findVar(const std::string& name)
 {
@@ -199,4 +202,54 @@ bool Environment::removeVar(
         return parent->removeVar(name);
 
     return false;
+}
+
+Environment* Environment::getModuleEnvironment() noexcept
+{
+    Environment* module = this;
+
+    while (module->parent != nullptr)
+        module = module->parent;
+
+    return module;
+}
+
+void Environment::registerNokiClassTypeID(
+    RuntimeObjectTypeID id
+)
+{
+    if (
+        std::find(
+            nokiClassTypeIDs.begin(),
+            nokiClassTypeIDs.end(),
+            id
+        ) != nokiClassTypeIDs.end()
+    )
+    {
+        throw std::runtime_error(
+            "Noki class type ID already tracked."
+        );
+    }
+
+    nokiClassTypeIDs.push_back(id);
+}
+
+void Environment::unregisterNokiClassTypeID(
+    RuntimeObjectTypeID id
+) noexcept
+{
+    auto it = std::find(
+        nokiClassTypeIDs.begin(),
+        nokiClassTypeIDs.end(),
+        id
+    );
+
+    if (it != nokiClassTypeIDs.end())
+        nokiClassTypeIDs.erase(it);
+}
+
+std::vector<RuntimeObjectTypeID>
+Environment::takeNokiClassTypeIDs() noexcept
+{
+    return std::move(nokiClassTypeIDs);
 }

@@ -3,6 +3,8 @@
 #include "lexer.hpp"
 #include <memory>
 #include <charconv>
+#include <string_view>
+#include <stdexcept>
 
 #define current tokens[idx_currentToken]
 
@@ -205,6 +207,322 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
     );
 }
 
+std::unique_ptr<ASTNode> Parser::parseClassDecl()
+{
+    // Consumir "class".
+    idx_currentToken++;
+
+    // Nome da classe.
+    if (current.getType() != Token::IDENTIFIER)
+        return nullptr;
+
+    auto name = ASTNode::ast_newVar(current.getString());
+    idx_currentToken++;
+
+    // Abertura do corpo.
+    if (current.getType() != Token::OPEN_SCOPE)
+        return nullptr;
+
+    idx_currentToken++;
+
+    auto declaration =
+        ASTNode::ast_newClassDeclaration(std::move(name));
+
+    // Por omissão, os membros são públicos.
+    ASTNode::AccessModifier currentAccess =
+        ASTNode::AccessModifier::PUBLIC;
+
+    auto memberNameExists =
+        [&declaration](std::string_view name) -> bool
+    {
+        for (const auto& child : declaration->children)
+        {
+            if (
+                child == nullptr ||
+                child->children.empty() ||
+                child->children[0] == nullptr
+            )
+            {
+                continue;
+            }
+
+            if (
+                child->type !=
+                    ASTNode::TypeNode::CLASS_FIELD_DECLARATION &&
+                child->type !=
+                    ASTNode::TypeNode::FUNCTION_DECLARATION &&
+                child->type !=
+                    ASTNode::TypeNode::CLASS_DECLARATION
+            )
+            {
+                continue;
+            }
+
+            if (
+                child->children[0]->getType() !=
+                ASTNode::TypeNode::VARIABLE
+            )
+            {
+                continue;
+            }
+
+            if (child->children[0]->getString() == name)
+                return true;
+        }
+
+        return false;
+    };
+
+    while (true)
+    {
+        // Ignorar linhas vazias e separadores.
+        while (
+            current.getType() ==
+            Token::NEWLINE_or_SEMICOLON
+        )
+        {
+            idx_currentToken++;
+        }
+
+        // Fim da declaração da classe.
+        if (current.getType() == Token::CLOSE_SCOPE)
+        {
+            idx_currentToken++;
+            return declaration;
+        }
+
+        if (current.getType() == Token::END_OF_FILE)
+            return nullptr;
+
+        // Alterar o modificador de acesso atual.
+        if (
+            current.getType() == Token::PUBLIC ||
+            current.getType() == Token::PRIVATE ||
+            current.getType() == Token::PROTECTED
+        )
+        {
+            auto accessToken = current.getType();
+
+            idx_currentToken++;
+
+            if (current.getType() != Token::COLON)
+                return nullptr;
+
+            idx_currentToken++;
+
+            switch (accessToken)
+            {
+            case Token::PUBLIC:
+                currentAccess =
+                    ASTNode::AccessModifier::PUBLIC;
+                break;
+
+            case Token::PRIVATE:
+                currentAccess =
+                    ASTNode::AccessModifier::PRIVATE;
+                break;
+
+            case Token::PROTECTED:
+                currentAccess =
+                    ASTNode::AccessModifier::PROTECTED;
+                break;
+
+            default:
+                throw std::runtime_error(
+                    "SYNTAX ERROR (CLASS DECLARATION): "
+                    "Invalid specifier inside class declaration."
+                );
+            }
+
+            continue;
+        }
+
+            // Declaração de uma classe aninhada.
+        if (current.getType() == Token::CLASS)
+        {
+            // A chamada recursiva consome a declaração completa.
+            auto nestedClass = parseClassDecl();
+
+            if (
+                nestedClass == nullptr ||
+                nestedClass->children.empty() ||
+                nestedClass->children[0] == nullptr ||
+                nestedClass->children[0]->getType() !=
+                    ASTNode::TypeNode::VARIABLE
+            )
+            {
+                return nullptr;
+            }
+
+            const std::string_view nestedName =
+                nestedClass->children[0]->getString();
+
+            if (memberNameExists(nestedName))
+            {
+                throw std::runtime_error(
+                    "SYNTAX ERROR (CLASS DECLARATION): "
+                    "Duplicated member names at class declaration."
+                );
+            }
+
+            // Preservar public/private/protected na própria declaração.
+            nestedClass->accessModifier = currentAccess;
+
+            declaration->children.push_back(
+                std::move(nestedClass)
+            );
+
+            continue;
+        }
+
+        // Declaração de método da classe.
+        if (current.getType() == Token::FUNCTION)
+        {
+            auto method = parseFuncDecl();
+
+            if (method == nullptr)
+                return nullptr;
+
+            if (
+                method->children.empty() ||
+                method->children[0] == nullptr ||
+                method->children[0]->getType() !=
+                    ASTNode::TypeNode::VARIABLE
+            )
+            {
+                return nullptr;
+            }
+
+            if (memberNameExists(method->children[0]->getString()))
+            {
+                throw std::runtime_error(
+                    "SYNTAX ERROR (CLASS DECLARATION): "
+                    "Duplicated member names at class declaration."
+                );
+            }
+
+            method->accessModifier = currentAccess;
+
+            declaration->children.push_back(
+                std::move(method)
+            );
+
+            continue;
+        }
+
+        // Tipo do campo.
+        if (current.getType() != Token::IDENTIFIER)
+            return nullptr;
+
+        std::string_view typeName = current.getString();
+        idx_currentToken++;
+
+        if (current.getType() != Token::COLON)
+            return nullptr;
+
+        idx_currentToken++;
+
+        // Nome do campo.
+        if (current.getType() != Token::IDENTIFIER)
+            return nullptr;
+
+        std::string_view fieldName = current.getString();
+
+        auto fieldNameNode =
+            ASTNode::ast_newVar(fieldName);
+
+        idx_currentToken++;
+
+        // Resolver o tipo declarado.
+        ASTNode::TypeNode fieldType =
+            ASTNode::TypeNode::INVALID;
+
+        if (typeName == "int")
+            fieldType = ASTNode::TypeNode::INT;
+        else if (typeName == "float")
+            fieldType = ASTNode::TypeNode::FLOAT;
+        else if (typeName == "bool")
+            fieldType = ASTNode::TypeNode::BOOL;
+        else if (typeName == "string")
+            fieldType = ASTNode::TypeNode::STRING;
+        else if (typeName == "vector")
+            fieldType = ASTNode::TypeNode::VECTOR;
+        else if (typeName == "any")
+            fieldType = ASTNode::TypeNode::ANYVALUE;
+        else
+            throw std::runtime_error(
+                    "SYNTAX ERROR (CLASS DECLARATION): "
+                    "Invalid defition of variable at class declaration."
+                );
+
+        // Rejeitar nomes duplicados entre campos, métodos
+        // e classes aninhadas.
+        if (memberNameExists(fieldName))
+        {
+            throw std::runtime_error(
+                "SYNTAX ERROR (CLASS DECLARATION): "
+                "Duplicated member names at class declaration."
+            );
+        }
+
+        // Valor inicial explícito ou predefinido.
+        std::unique_ptr<ASTNode> defaultValue;
+
+        if (current.getType() == Token::TokenType::EQUAL)
+        {
+            // Consumir "=" e analisar a expressão.
+            idx_currentToken++;
+
+            defaultValue = parseAssignment();
+
+            if (defaultValue == nullptr)
+                return nullptr;
+        }
+        else
+        {
+            switch (fieldType)
+            {
+            case ASTNode::TypeNode::INT:
+            case ASTNode::TypeNode::ANYVALUE:
+                defaultValue = ASTNode::ast_newInt(0);
+                break;
+
+            case ASTNode::TypeNode::FLOAT:
+                defaultValue = ASTNode::ast_newFloat(0.0);
+                break;
+
+            case ASTNode::TypeNode::BOOL:
+                defaultValue = ASTNode::ast_newBool(false);
+                break;
+
+            case ASTNode::TypeNode::STRING:
+                defaultValue = ASTNode::ast_newString("");
+                break;
+
+            case ASTNode::TypeNode::VECTOR:
+                defaultValue = ASTNode::ast_newVector();
+                break;
+
+            default:
+                return nullptr;
+            }
+        }
+
+        // Criar o campo com o modificador de acesso atual.
+        auto field =
+            ASTNode::ast_newClassFieldDeclaration(
+                fieldType,
+                std::move(fieldNameNode),
+                std::move(defaultValue),
+                currentAccess
+            );
+
+        declaration->children.push_back(
+            std::move(field)
+        );
+    }
+}
+
 std::unique_ptr<ASTNode> Parser::parseStatement() {
 
     if (current.getType() == (Token::TokenType::null)) return ASTNode::ast_newNULL();
@@ -214,6 +532,7 @@ std::unique_ptr<ASTNode> Parser::parseStatement() {
     if (current.getType() == Token::WHILE) return parseWhile();
     if (current.getType() == Token::IMPORT) return parseImport();
     if (current.getType() == Token::FUNCTION) return parseFuncDecl();
+    if (current.getType() == Token::CLASS) return parseClassDecl();
 
     if (current.getType() == Token::BREAK) {
         idx_currentToken++;
@@ -265,7 +584,6 @@ std::unique_ptr<ASTNode> Parser::parseStatement() {
 
         return node;
     }
-
 
     return parseAssignment();
 

@@ -4,6 +4,9 @@
 #include <memory>
 #include <unordered_map>
 #include <string>
+#include <utility>
+#include <vector>
+#include "runtimeobjectType.hpp"
 
 #include "runtimeval.hpp"
 #include "runtimefunc.hpp"
@@ -11,8 +14,17 @@
 class Environment
 {
     public:
-        explicit Environment(Environment* parent = nullptr)
-        : parent(parent) {}
+        explicit Environment(
+            Environment* parent = nullptr,
+            std::string moduleName = "<main>"
+        )
+            : parent(parent),
+            moduleName(
+                parent != nullptr
+                    ? parent->moduleName
+                    : std::move(moduleName)
+            )
+        {}
 
         RuntimeValue* findVar(const std::string& name);
         RuntimeValue* findLocalVar(const std::string& name);
@@ -51,6 +63,38 @@ class Environment
             return nokiFunctions.find(name) != nokiFunctions.end();
         }
 
+        const std::string& getModuleName() const noexcept
+        {
+            return moduleName;
+        }
+
+        Environment* getModuleEnvironment() noexcept;   
+
+        void registerNokiClassTypeID(RuntimeObjectTypeID id);
+
+        void unregisterNokiClassTypeID(
+            RuntimeObjectTypeID id
+        ) noexcept;
+
+        std::vector<RuntimeObjectTypeID>
+        takeNokiClassTypeIDs() noexcept;
+
+        void setExecutionReceiver(RuntimeObject* receiver) noexcept
+        {
+            executionReceiver = receiver;
+            executionReceiverIsSet = true;
+        }
+
+        RuntimeObject* getExecutionReceiver() const noexcept
+        {
+            if (executionReceiverIsSet)
+                return executionReceiver;
+
+            return parent != nullptr
+                ? parent->getExecutionReceiver()
+                : nullptr;
+        }
+
     private:
         std::unordered_map<std::string, RuntimeValue> variables;
 
@@ -64,6 +108,12 @@ class Environment
         std::unordered_map<
             std::string, std::unique_ptr<NokiFunction>
         > nokiFunctions;
+
+        std::string moduleName;
+        std::vector<RuntimeObjectTypeID> nokiClassTypeIDs;
+        
+        RuntimeObject* executionReceiver = nullptr;
+        bool executionReceiverIsSet = false;
 };
 
 #endif

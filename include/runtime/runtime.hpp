@@ -3,10 +3,12 @@
 
 #include <unordered_map>
 #include <string>
+#include <limits>
 #include "runtimeval.hpp"
 #include "environment.hpp"
 #include "libmanager.hpp"
 #include "runtimeobjectManager.hpp"
+#include "nokiClass.hpp"
 
 class Runtime
 {
@@ -18,10 +20,13 @@ public:
     Environment* current;
 
     Runtime()
-        : libraries(objects),
-        global(nullptr),
-        current(&global)
+    : libraries(objects),
+      global(nullptr),
+      current(&global)
     {
+        nokiClassMetaTypeID =
+            objects.registerType("::noki::class-definition::");
+
         initializeLibraries();
     }
 
@@ -38,9 +43,27 @@ public:
         delete old;
     }
 
+    RuntimeObjectTypeID getNokiClassMetaTypeID()
+    {
+        if (
+            nokiClassMetaTypeID ==
+            std::numeric_limits<RuntimeObjectTypeID>::max()
+        )
+        {
+            nokiClassMetaTypeID =
+                objects.registerType(
+                    "$noki$class-definition"
+                );
+        }
+
+        return nokiClassMetaTypeID;
+    }
+
 private:
     void initializeLibraries();
     //void initializeValueTypes();
+    RuntimeObjectTypeID nokiClassMetaTypeID =
+    std::numeric_limits<RuntimeObjectTypeID>::max();
 
 };
 

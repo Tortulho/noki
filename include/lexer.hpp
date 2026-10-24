@@ -41,6 +41,7 @@ class Token {
             STRING,
             BOOL,
             null,
+            ANY, //MOSTLY FOR CLASSES TYPOS
             
             RETURN,
             RAISE,
@@ -79,6 +80,14 @@ class Token {
             FUNCTION,
             CONST,
             MUTABLE,
+
+            //CLASS MODULE
+            CLASS,
+            PRIVATE,
+            PUBLIC,
+            PROTECTED,
+
+            RESERVED,
 
             EXIT,
 
@@ -131,10 +140,14 @@ const KEYWORD KEYWORDS[] = {
     {"func",        Token::TokenType::FUNCTION      },
     {"function",    Token::TokenType::FUNCTION      },
     {"const",       Token::TokenType::CONST         },
-    {"continue",       Token::TokenType::CONTINUE   },
+    {"continue",    Token::TokenType::CONTINUE      },
     {"break",       Token::TokenType::BREAK         },
-    {"mut",       Token::TokenType::MUTABLE         },
-    {"mutable",       Token::TokenType::MUTABLE     },
+    {"mut",         Token::TokenType::MUTABLE       },
+    {"mutable",     Token::TokenType::MUTABLE       },
+    {"class",       Token::TokenType::CLASS         },
+    {"private",     Token::TokenType::PRIVATE       },
+    {"public",      Token::TokenType::PUBLIC        },
+    {"protected",   Token::TokenType::PROTECTED     },
 };
 
 #endif

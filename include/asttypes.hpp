@@ -46,7 +46,11 @@ enum TypeNode {
     VECTOR,
     INDEX,
 
+    //MOSTLY FOR CLASSES
     ANYVALUE,
+    //CLASSES
+    CLASS_DECLARATION,
+    CLASS_FIELD_DECLARATION,
 
     EXIT,
 

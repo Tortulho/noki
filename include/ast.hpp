@@ -13,14 +13,15 @@ using ASTValue = std::variant<
     bool,
     void*,
     std::string_view,
-    std::unique_ptr<std::vector<FunctionParameter>>
+    std::unique_ptr<std::vector<FunctionParameter>>,
+    TypeNode
 >;
 
 class ASTNode {
 
     public:
-        using TypeNode = ::TypeNode;
-        
+
+        using TypeNode = ::TypeNode; 
         enum TypeOp{
             NONE,
 
@@ -52,13 +53,16 @@ class ASTNode {
 
         ASTValue as;
         TypeNode type;
-
-    private:
-
-    public:
-
-        //TypeNode type;
         TypeOp op = TypeOp::NONE;
+
+        enum class AccessModifier
+        {
+            PUBLIC,
+            PRIVATE,
+            PROTECTED
+        };
+
+        AccessModifier accessModifier = AccessModifier::PUBLIC;
 
         std::vector<std::unique_ptr<ASTNode>> children;
 
@@ -104,6 +108,15 @@ class ASTNode {
             std::unique_ptr<ASTNode> variable,
             std::unique_ptr<ASTNode> expression
         );
+        static std::unique_ptr<ASTNode> ast_newClassDeclaration(
+            std::unique_ptr<ASTNode> name
+        );
+        static std::unique_ptr<ASTNode> ast_newClassFieldDeclaration(
+            TypeNode fieldType,
+            std::unique_ptr<ASTNode> name,
+            std::unique_ptr<ASTNode> defaultValue,
+            AccessModifier accessModifier = AccessModifier::PUBLIC
+        );
         
         TypeNode getType() const {return type;}
         TypeOp getOp() const {return op;}
@@ -125,6 +138,10 @@ class ASTNode {
 
         const std::string_view& getString() const {
             return std::get<std::string_view>(as);
+        }
+
+        TypeNode getTypeNode() const {
+            return std::get<TypeNode>(as);
         }
             
         void dump(int indent) const;

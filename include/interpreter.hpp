@@ -21,6 +21,8 @@ struct EvalResult
     FlowControl control = FlowControl::NONE;
 };
 
+class NokiClassInstance;
+
 class Interpreter {
 
     public:
@@ -41,6 +43,12 @@ class Interpreter {
         static RuntimeValue* resolveLValue(const ASTNode& node, FlowControl& control);
         static EvalResult  evalFuncDecl(const ASTNode& node);
         static EvalResult evalMove(const ASTNode& node);
+        static EvalResult evalClassDeclaration(const ASTNode& node);
+        static EvalResult evalNokiMethodCall(
+            const ASTNode& callNode,
+            const ASTNode& methodDeclaration,
+            NokiClassInstance& instance
+        );
 
 };
 

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iterator>
 #include <vector>
+#include <exception>
 
 #include "ast.hpp"
 #include "environment.hpp"
@@ -214,7 +215,10 @@ bool LibraryManager::importNokiLibrary(
     }
 
     auto environment =
-        std::make_unique<Environment>(nullptr);
+    std::make_unique<Environment>(
+        nullptr,
+        path.generic_string()
+    );
 
     auto module =
         std::make_unique<NokiModule>(
@@ -272,12 +276,37 @@ bool LibraryManager::importNokiLibrary(
     }
     catch (...)
     {
+        const std::exception_ptr originalException =
+            std::current_exception();
+
+        // Guardar os IDs antes de destruir o módulo.
+        auto classTypeIDs =
+            modulePtr->getEnvironment()->takeNokiClassTypeIDs();
+
         runtimeInstance->current =
             previousEnvironment;
 
+        // Destruir o ambiente e as definições canónicas da
+        // biblioteca antes de remover os respetivos tipos.
         libraries.erase(name);
 
-        throw;
+        bool rollbackFailed = false;
+
+        for (const RuntimeObjectTypeID typeID : classTypeIDs)
+        {
+            if (!objectManager.unregisterType(typeID))
+                rollbackFailed = true;
+        }
+
+        if (rollbackFailed)
+        {
+            throw std::runtime_error(
+                "Critical error: failed to roll back "
+                "Noki class type registrations."
+            );
+        }
+
+        std::rethrow_exception(originalException);
     }
 
     runtimeInstance->current =

@@ -12,7 +12,7 @@
 
 int main(int argc, char const *argv[])
 {
-    std::cout << "Noki REPL v1.0 'Clear exiting'\n";
+    std::cout << "Noki DEVMODE v1.1 'Classes'\n";
 
     if (argc == 1) {
         //MODO REPL

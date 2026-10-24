@@ -42,6 +42,43 @@ std::unique_ptr<ASTNode> ASTNode::ast_newBool(bool value)
     return node;
 }
 
+//CLASSES
+
+std::unique_ptr<ASTNode> ASTNode::ast_newClassDeclaration(
+    std::unique_ptr<ASTNode> name)
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = TypeNode::CLASS_DECLARATION;
+    node->as = static_cast<void*>(nullptr);
+
+    node->children.push_back(std::move(name));
+
+    return node;
+}
+
+std::unique_ptr<ASTNode> ASTNode::ast_newClassFieldDeclaration(
+    TypeNode fieldType,
+    std::unique_ptr<ASTNode> name,
+    std::unique_ptr<ASTNode> defaultValue,
+    AccessModifier accessModifier
+)
+{
+    auto node = std::make_unique<ASTNode>();
+
+    node->type = TypeNode::CLASS_FIELD_DECLARATION;
+    node->as = fieldType;
+    node->accessModifier = accessModifier;
+
+    node->children.push_back(std::move(name));
+    node->children.push_back(std::move(defaultValue));
+
+    return node;
+}
+
+
+//
+
 std::unique_ptr<ASTNode> ASTNode::ast_newVar(std::string_view text)
 {
     std::unique_ptr<ASTNode> node = std::make_unique<ASTNode>();
@@ -364,15 +401,15 @@ void ASTNode::dump(int indent) const
     case TypeNode::null:
         std::cout << "null";
         break;
-    
+
     case TypeNode::CONTINUE:
         std::cout << "CONTINUE";
         break;
-    
+
     case TypeNode::BREAK:
         std::cout << "BREAK";
         break;
-    
+
     case TypeNode::RETURN:
         std::cout << "RETURN";
         break;
@@ -390,8 +427,7 @@ void ASTNode::dump(int indent) const
         {
             for (const auto& parameter : *parameters)
             {
-                std::cout
-                    << "\n";
+                std::cout << "\n";
 
                 for (int i = 0; i < indent + 1; i++)
                     std::cout << "    ";
@@ -416,6 +452,87 @@ void ASTNode::dump(int indent) const
         std::cout << "MOVE";
         break;
 
+    case TypeNode::CLASS_DECLARATION:
+    {
+        std::cout << "CLASS DECLARATION access=";
+
+        switch (accessModifier)
+        {
+        case AccessModifier::PUBLIC:
+            std::cout << "public";
+            break;
+
+        case AccessModifier::PRIVATE:
+            std::cout << "private";
+            break;
+
+        case AccessModifier::PROTECTED:
+            std::cout << "protected";
+            break;
+        }
+
+        break;
+    }
+
+    case TypeNode::CLASS_FIELD_DECLARATION:
+    {
+        std::cout << "CLASS FIELD access=";
+
+        switch (accessModifier)
+        {
+        case AccessModifier::PUBLIC:
+            std::cout << "public";
+            break;
+
+        case AccessModifier::PRIVATE:
+            std::cout << "private";
+            break;
+
+        case AccessModifier::PROTECTED:
+            std::cout << "protected";
+            break;
+
+        default:
+            std::cout << "unknown";
+            break;
+        }
+
+        std::cout << " type=";
+
+        switch (getTypeNode())
+        {
+        case TypeNode::INT:
+            std::cout << "int";
+            break;
+
+        case TypeNode::FLOAT:
+            std::cout << "float";
+            break;
+
+        case TypeNode::BOOL:
+            std::cout << "bool";
+            break;
+
+        case TypeNode::STRING:
+            std::cout << "string";
+            break;
+
+        case TypeNode::VECTOR:
+            std::cout << "vector";
+            break;
+
+        case TypeNode::ANYVALUE:
+            std::cout << "any";
+            break;
+
+        default:
+            std::cout << "UNKNOWN";
+            break;
+        }
+
+        break;
+    }
+    
     default:
         std::cout << "UNKNOWN";
         break;
@@ -425,7 +542,8 @@ void ASTNode::dump(int indent) const
 
     for (const auto& child : children)
     {
-        child->dump(indent + 1);
+        if (child != nullptr)
+            child->dump(indent + 1);
     }
 }
 
@@ -435,6 +553,7 @@ std::unique_ptr<ASTNode> ASTNode::ast_clone(const ASTNode& node)
 
     copy->type = node.type;
     copy->op = node.op;
+    copy->accessModifier = node.accessModifier;
 
     if (std::holds_alternative<int64_t>(node.as))
     {
@@ -455,6 +574,10 @@ std::unique_ptr<ASTNode> ASTNode::ast_clone(const ASTNode& node)
     else if (std::holds_alternative<std::string_view>(node.as))
     {
         copy->as = std::get<std::string_view>(node.as);
+    }
+    else if (std::holds_alternative<TypeNode>(node.as))
+    {
+        copy->as = node.getTypeNode();
     }
     else if (
         std::holds_alternative<

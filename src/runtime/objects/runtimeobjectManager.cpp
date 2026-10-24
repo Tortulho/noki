@@ -1,5 +1,6 @@
 #include "runtimeobjectManager.hpp"
 #include <stdexcept>
+#include <limits>
 
 RuntimeObjectManager::RuntimeObjectManager()
 {
@@ -12,7 +13,8 @@ RuntimeObjectManager::RuntimeObjectManager()
 }
 
 RuntimeObjectTypeID RuntimeObjectManager::registerType(
-    const std::string& name)
+    const std::string& name
+)
 {
     if (names.find(name) != names.end())
     {
@@ -23,14 +25,54 @@ RuntimeObjectTypeID RuntimeObjectManager::registerType(
         );
     }
 
-    RuntimeObjectTypeID id = nextID++;
+    // Reservar o valor máximo como ID inválido.
+    if (
+        nextID ==
+        std::numeric_limits<RuntimeObjectTypeID>::max()
+    )
+    {
+        throw std::runtime_error(
+            "Critical error: runtime object type IDs exhausted."
+        );
+    }
 
-    types.emplace(
-        id,
-        RuntimeObjectType(id, name)
-    );
+    const RuntimeObjectTypeID id = nextID;
 
-    names.emplace(name, id);
+    auto [typeIt, typeInserted] =
+        types.emplace(
+            id,
+            RuntimeObjectType(id, name)
+        );
+
+    if (!typeInserted)
+    {
+        throw std::runtime_error(
+            "Critical error: runtime object type ID collision."
+        );
+    }
+
+    try
+    {
+        auto [nameIt, nameInserted] =
+            names.emplace(name, id);
+
+        if (!nameInserted)
+        {
+            throw std::runtime_error(
+                "Critical error: runtime object type '" +
+                name +
+                "' is already registered."
+            );
+        }
+    }
+    catch (...)
+    {
+        types.erase(typeIt);
+        throw;
+    }
+
+    // Só consumir o ID depois das duas inserções.
+    ++nextID;
 
     return id;
 }

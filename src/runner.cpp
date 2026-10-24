@@ -24,7 +24,7 @@ EvalResult Runner::run(const std::string& source) {
 
     // DEBUG
     // DUMP THE AST HERE
-    // node->dump(4);
+    node->dump(4);
 
     EvalResult result = Interpreter::eval(*node);
 

@@ -8,7 +8,93 @@
 #include "runtimevalVector.hpp"
 #include <math.h>
 
+#include "nokiClass.hpp"
+#include "nokiClassInstance.hpp"
+#include "nokiModule.hpp"
+#include "runtimevalVector.hpp"
+
+#include <string>
+#include <utility>
+
 using TypeNode = ::TypeNode;
+
+// Declarações antecipadas das funções auxiliares das classes Noki.
+
+static bool canAccessNokiMember(
+    const ASTNode& memberDeclaration,
+    const NokiClassInstance& targetInstance
+);
+
+static bool canAccessNestedNokiClass(
+    const NokiClass& parentClass,
+    const NokiClass& nestedClass
+);
+
+static const NokiClass& getCanonicalNokiClass(
+    const NokiClassInstance& instance
+);
+
+static const ASTNode* findNokiClassMethod(
+    const ASTNode& declaration,
+    const std::string& methodName
+);
+
+static const ASTNode* findNokiFieldDeclaration(
+    const ASTNode& declaration,
+    const std::string& fieldName
+);
+
+static const ASTNode* findNokiFieldDeclaration(
+    const NokiClassInstance& instance,
+    const std::string& fieldName
+);
+
+static bool nokiFieldTypeMatches(
+    TypeNode fieldType,
+    const RuntimeValue& value
+);
+
+static EvalResult instantiateNokiClass(
+    const ASTNode& callNode,
+    NokiClass& classDefinition
+);
+
+static bool canAccessNestedNokiClass(
+    const NokiClass& parentClass,
+    const NokiClass& nestedClass
+)
+{
+    const ASTNode& declaration =
+        nestedClass.getDeclaration();
+
+    switch (declaration.accessModifier)
+    {
+    case ASTNode::AccessModifier::PUBLIC:
+        return true;
+
+    case ASTNode::AccessModifier::PRIVATE:
+    case ASTNode::AccessModifier::PROTECTED:
+        break;
+
+    default:
+        return false;
+    }
+
+    if (runtime.current == nullptr)
+        return false;
+
+    auto* activeInstance =
+        dynamic_cast<NokiClassInstance*>(
+            runtime.current->getExecutionReceiver()
+        );
+
+    if (activeInstance == nullptr)
+        return false;
+
+    return
+        activeInstance->getCanonicalDefinitionID() ==
+        parentClass.getCanonicalDefinitionID();
+}
 
 #define LEFTPARTOFTREE children[0]
 #define RIGHTPARTOFTREE children[1]
@@ -63,6 +149,78 @@ RuntimeValue* Interpreter::resolveLValue(const ASTNode& node, FlowControl& contr
         return &vector->at(
             static_cast<size_t>(indexValue)
         );
+    }
+
+    if (node.getType() == TypeNode::MEMBER_ACCESS)
+    {
+        if (
+            node.children.size() != 2 ||
+            node.children[0] == nullptr ||
+            node.children[1] == nullptr ||
+            node.children[1]->getType() != TypeNode::VARIABLE
+        )
+        {
+            return nullptr;
+        }
+
+        RuntimeValue* receiver =
+            resolveLValue(*node.children[0], control);
+
+        if (control == FlowControl::EXIT)
+            return nullptr;
+
+        if (
+            receiver == nullptr ||
+            !receiver->isObject()
+        )
+        {
+            return nullptr;
+        }
+
+        auto* instance =
+            dynamic_cast<NokiClassInstance*>(
+                receiver->getObject()
+            );
+
+        if (instance == nullptr)
+            return nullptr;
+
+        const std::string fieldName(
+            node.children[1]->getString()
+        );
+
+        const ASTNode* fieldDeclaration =
+            findNokiFieldDeclaration(
+                *instance,
+                fieldName
+            );
+
+        if (fieldDeclaration == nullptr)
+        {
+            throw std::runtime_error(
+                "Field '" + fieldName +
+                "' not found in Noki class."
+            );
+        }
+
+        if (!canAccessNokiMember(*fieldDeclaration, *instance))
+        {
+            throw std::runtime_error(
+                "Access denied to field '" + fieldName + "'."
+            );
+        }
+
+        RuntimeValue* field =
+            instance->findField(fieldName);
+
+        if (field == nullptr)
+        {
+            throw std::runtime_error(
+                "Noki class field storage is inconsistent."
+            );
+        }
+
+        return field;
     }
 
     return nullptr;
@@ -201,6 +359,9 @@ EvalResult Interpreter::eval(const ASTNode& node)
                 FlowControl::RETURN
             };
         }
+
+        case TypeNode::CLASS_DECLARATION:
+            return evalClassDeclaration(node);
 
         case TypeNode::EXIT:
             return {
@@ -466,6 +627,101 @@ EvalResult Interpreter::evalAssign(const ASTNode& node)
         return {*targetValue, FlowControl::NONE};
     }
 
+    if (target.getType() == TypeNode::MEMBER_ACCESS)
+    {
+        FlowControl control = FlowControl::NONE;
+
+        RuntimeValue* targetValue =
+            resolveLValue(target, control);
+
+        if (control == FlowControl::EXIT)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
+        }
+
+        if (targetValue == nullptr)
+        {
+            throw std::runtime_error(
+                "Invalid Noki class field assignment."
+            );
+        }
+
+        // Recuperar o campo declarado para validar o tipo.
+        RuntimeValue* receiverValue =
+            resolveLValue(*target.children[0], control);
+
+        if (control == FlowControl::EXIT)
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
+        }
+
+        if (
+            receiverValue == nullptr ||
+            !receiverValue->isObject()
+        )
+        {
+            throw std::runtime_error(
+                "Invalid Noki class field assignment."
+            );
+        }
+
+        auto* instance =
+            dynamic_cast<NokiClassInstance*>(
+                receiverValue->getObject()
+            );
+
+        if (instance == nullptr)
+        {
+            throw std::runtime_error(
+                "Assignment target is not a Noki class instance."
+            );
+        }
+
+        const std::string fieldName(
+            target.children[1]->getString()
+        );
+
+        const ASTNode* fieldDeclaration =
+            findNokiFieldDeclaration(
+                *instance,
+                fieldName
+            );
+
+        if (fieldDeclaration == nullptr)
+        {
+            throw std::runtime_error(
+                "Field '" + fieldName +
+                "' not found in Noki class."
+            );
+        }
+
+        if (
+            !nokiFieldTypeMatches(
+                fieldDeclaration->getTypeNode(),
+                value
+            )
+        )
+        {
+            throw std::runtime_error(
+                "Assignment type mismatch for Noki field '" +
+                fieldName + "'."
+            );
+        }
+
+        *targetValue = std::move(value);
+
+        return {
+            *targetValue,
+            FlowControl::NONE
+        };
+    }
+
     return {RuntimeValue(nullptr), FlowControl::NONE};
 }
 
@@ -504,6 +760,29 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
     if (target.getType() == TypeNode::VARIABLE)
     {
         std::string name(target.getString());
+        // Antes de procurar funções, verificar se o nome identifica
+        // uma definição de classe guardada como RuntimeValue.
+        RuntimeValue* namedValue =
+            runtime.current->findVar(name);
+
+        if (
+            namedValue != nullptr &&
+            namedValue->isObject()
+        )
+        {
+            auto* classDefinition =
+                dynamic_cast<NokiClass*>(
+                    namedValue->getObject()
+                );
+
+            if (classDefinition != nullptr)
+            {
+                return instantiateNokiClass(
+                    node,
+                    *classDefinition
+                );
+            }
+        }
 
         /*
          * Primeiro tentamos a resolução C++ existente.
@@ -669,6 +948,40 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
         /*
          * Depois tentamos uma função Noki local.
          */
+
+         // Procurar primeiro um método da instância atual.
+        if (
+            auto* activeInstance =
+                dynamic_cast<NokiClassInstance*>(
+                    runtime.current->getExecutionReceiver()
+                )
+        )
+        {
+            const NokiClass& classDefinition =
+                getCanonicalNokiClass(*activeInstance);
+
+            const ASTNode* method =
+                findNokiClassMethod(
+                    classDefinition.getDeclaration(),
+                    name
+                );
+
+            if (method != nullptr)
+            {
+                if (!canAccessNokiMember(*method, *activeInstance))
+                {
+                    throw std::runtime_error(
+                        "Access denied to method '" + name + "'."
+                    );
+                }
+
+                return evalNokiMethodCall(
+                    node,
+                    *method,
+                    *activeInstance
+                );
+            }
+        }
         NokiFunction* nokiFunction = runtime.current->findNokiFunction(name);
 
         if (nokiFunction != nullptr)
@@ -884,6 +1197,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             */
             runtime.pushEnvironment();
 
+            // Uma função global não herda o receiver do chamador.
+            runtime.current->setExecutionReceiver(nullptr);
+
             /*
             * Fazer o binding dos parâmetros.
             */
@@ -1055,6 +1371,31 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                             libraryName +
                             "' has no environment."
                         );
+                    }
+
+                    if (runtime.libraries.isImported(libraryName))
+                    {
+                        RuntimeValue* moduleMember =
+                            moduleEnvironment->findLocalVar(functionName);
+
+                        if (
+                            moduleMember != nullptr &&
+                            moduleMember->isObject()
+                        )
+                        {
+                            auto* classDefinition =
+                                dynamic_cast<NokiClass*>(
+                                    moduleMember->getObject()
+                                );
+
+                            if (classDefinition != nullptr)
+                            {
+                                return instantiateNokiClass(
+                                    node,
+                                    *classDefinition
+                                );
+                            }
+                        }
                     }
 
                     NokiFunction* nokiFunction =
@@ -1362,6 +1703,9 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                             runtime
                         );
 
+                        // Uma função de módulo não herda o receiver de uma instância.
+                        runtime.current->setExecutionReceiver(nullptr);
+
                         /*
                         * Fazer o binding dos parâmetros.
                         */
@@ -1481,6 +1825,40 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             };
         }
 
+        /*
+        * Uma cadeia como Outer.Inner pode produzir um RuntimeValue
+        * temporário que representa uma definição de classe.
+        *
+        * Mantemos o temporário vivo até terminar o despacho.
+        */
+        RuntimeValue evaluatedReceiver;
+
+        if (
+            receiver == nullptr &&
+            objectNode.getType() == TypeNode::MEMBER_ACCESS
+        )
+        {
+            EvalResult receiverResult = eval(objectNode);
+
+            if (receiverResult.control == FlowControl::EXIT)
+                return receiverResult;
+
+            if (receiverResult.control != FlowControl::NONE)
+            {
+                throw std::runtime_error(
+                    "Invalid control flow while resolving "
+                    "a nested Noki class receiver."
+                );
+            }
+
+            evaluatedReceiver = std::move(receiverResult.value);
+
+            if (evaluatedReceiver.isObject())
+            {
+                receiver = &evaluatedReceiver;
+            }
+        }
+
         if (receiver != nullptr)
         {
             /*
@@ -1498,6 +1876,95 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                         RuntimeValue(nullptr),
                         FlowControl::NONE
                     };
+                }
+
+                // Despacho de métodos de classes Noki.
+                // Despacho de definições de classes aninhadas.
+                if (auto* parentClass = dynamic_cast<NokiClass*>(object))
+                {
+                    RuntimeValue* nestedValue =
+                        parentClass->findNestedClass(functionName);
+
+                    if (nestedValue == nullptr)
+                    {
+                        throw std::runtime_error(
+                            "Nested class '" + functionName +
+                            "' not found in class '" +
+                            parentClass->getClassName() + "'."
+                        );
+                    }
+
+                    auto* nestedClass =
+                        dynamic_cast<NokiClass*>(
+                            nestedValue->getObject()
+                        );
+
+                    if (
+                        nestedClass == nullptr ||
+                        !nestedClass->isCanonical()
+                    )
+                    {
+                        throw std::runtime_error(
+                            "Invalid nested Noki class definition."
+                        );
+                    }
+
+                    if (
+                        !canAccessNestedNokiClass(
+                            *parentClass,
+                            *nestedClass
+                        )
+                    )
+                    {
+                        throw std::runtime_error(
+                            "ACCESS DENIED: cannot instantiate nested class '" +
+                            functionName + "'."
+                        );
+                    }
+
+                    return instantiateNokiClass(
+                        node,
+                        *nestedClass
+                    );
+                }
+
+                // Despacho de métodos de instâncias Noki.
+                if (auto* instance = dynamic_cast<NokiClassInstance*>(object))
+                {
+                    const NokiClass& classDefinition =
+                        getCanonicalNokiClass(*instance);
+
+                    const ASTNode* method =
+                        findNokiClassMethod(
+                            classDefinition.getDeclaration(),
+                            functionName
+                        );
+
+                    if (method == nullptr)
+                    {
+                        throw std::runtime_error(
+                            "Method '" + functionName +
+                            "' not found in Noki class '" +
+                            classDefinition.getClassName() + "'."
+                        );
+                    }
+
+                    if (!canAccessNokiMember(*method, *instance))
+                    {
+                        throw std::runtime_error(
+                            "Access denied to method '" +
+                            functionName +
+                            "' in Noki class '" +
+                            classDefinition.getClassName() +
+                            "'."
+                        );
+                    }
+
+                    return evalNokiMethodCall(
+                        node,
+                        *method,
+                        *instance
+                    );
                 }
 
                 RuntimeObjectType* type =
@@ -2493,55 +2960,237 @@ EvalResult Interpreter::evalImport(const ASTNode& node)
 
 EvalResult Interpreter::evalMemberAccess(const ASTNode& node)
 {
-    if (node.children.size() != 2)
+    if (
+        node.children.size() != 2 ||
+        node.children[0] == nullptr ||
+        node.children[1] == nullptr
+    )
+    {
         return {
             RuntimeValue(nullptr),
             FlowControl::NONE
         };
+    }
 
-    const ASTNode& object = *node.children[0];
-    const ASTNode& member = *node.children[1];
+    const ASTNode& objectNode = *node.children[0];
+    const ASTNode& memberNode = *node.children[1];
 
-    if (object.getType() != TypeNode::VARIABLE)
+    if (memberNode.getType() != TypeNode::VARIABLE)
+    {
         return {
             RuntimeValue(nullptr),
             FlowControl::NONE
         };
+    }
 
-    if (member.getType() != TypeNode::VARIABLE)
+    const std::string memberName(
+        memberNode.getString()
+    );
+
+    /*
+     * 1. Resolver campos de instâncias.
+     *
+     * resolveLValue trata a identidade da instância,
+     * a validação do campo e as regras de acesso.
+     */
+    FlowControl control = FlowControl::NONE;
+
+    RuntimeValue* fieldValue =
+        resolveLValue(node, control);
+
+    if (control == FlowControl::EXIT)
+    {
+        return {
+            RuntimeValue(nullptr),
+            FlowControl::EXIT
+        };
+    }
+
+    if (fieldValue != nullptr)
+    {
+        return {
+            *fieldValue,
+            FlowControl::NONE
+        };
+    }
+
+    /*
+     * 2. Resolver classes aninhadas.
+     *
+     * Exemplos:
+     *     Outer.Inner
+     *     Outer.Inner.Deep
+     *     dummyA.Outer.Inner
+     *
+     * A expressão à esquerda pode ser uma variável que contém
+     * NokiClass ou outra expressão MEMBER_ACCESS que resolve
+     * para uma definição de classe.
+     */
+    RuntimeValue evaluatedBase;
+    RuntimeValue* baseValue = nullptr;
+
+    if (objectNode.getType() == TypeNode::VARIABLE)
+    {
+        baseValue =
+            runtime.current->findVar(
+                std::string(objectNode.getString())
+            );
+    }
+    else if (
+        objectNode.getType() == TypeNode::MEMBER_ACCESS
+    )
+    {
+        EvalResult baseResult = eval(objectNode);
+
+        if (baseResult.control == FlowControl::EXIT)
+            return baseResult;
+
+        if (baseResult.control != FlowControl::NONE)
+        {
+            throw std::runtime_error(
+                "Invalid control flow while resolving "
+                "a nested Noki class."
+            );
+        }
+
+        evaluatedBase = std::move(baseResult.value);
+        baseValue = &evaluatedBase;
+    }
+
+    if (
+        baseValue != nullptr &&
+        baseValue->isObject()
+    )
+    {
+        auto* parentClass =
+            dynamic_cast<NokiClass*>(
+                baseValue->getObject()
+            );
+
+        if (parentClass != nullptr)
+        {
+            RuntimeValue* nestedValue =
+                parentClass->findNestedClass(memberName);
+
+            if (nestedValue == nullptr)
+            {
+                throw std::runtime_error(
+                    "Nested class '" + memberName +
+                    "' not found in class '" +
+                    parentClass->getClassName() + "'."
+                );
+            }
+
+            auto* nestedClass =
+                dynamic_cast<NokiClass*>(
+                    nestedValue->getObject()
+                );
+
+            if (
+                nestedClass == nullptr ||
+                !nestedClass->isCanonical()
+            )
+            {
+                throw std::runtime_error(
+                    "Invalid nested Noki class definition."
+                );
+            }
+
+            if (
+                !canAccessNestedNokiClass(
+                    *parentClass,
+                    *nestedClass
+                )
+            )
+            {
+                throw std::runtime_error(
+                    "ACCESS DENIED: cannot access nested class '" +
+                    memberName + "'."
+                );
+            }
+
+            /*
+             * A cópia do RuntimeValue cria uma referência
+             * registada para a mesma definição canónica.
+             * Não duplica a AST da classe.
+             */
+            return {
+                *nestedValue,
+                FlowControl::NONE
+            };
+        }
+    }
+
+    /*
+     * 3. Resolver membros exportados por bibliotecas .noki.
+     *
+     * Este caminho só se aplica quando o receiver é o nome
+     * simples de um módulo importado.
+     */
+    if (objectNode.getType() != TypeNode::VARIABLE)
+    {
         return {
             RuntimeValue(nullptr),
             FlowControl::NONE
         };
+    }
 
-    std::string libraryName(object.getString());
-    std::string memberName(member.getString());
+    const std::string moduleName(
+        objectNode.getString()
+    );
 
     Library* library =
-        runtime.libraries.findLibrary(libraryName);
+        runtime.libraries.findLibrary(moduleName);
 
-    if (library == nullptr)
+    if (
+        library == nullptr ||
+        !runtime.libraries.isImported(moduleName)
+    )
+    {
         return {
             RuntimeValue(nullptr),
             FlowControl::NONE
         };
+    }
 
-    if (!runtime.libraries.isImported(libraryName))
+    auto moduleIt =
+        library->nokiModules.find(moduleName);
+
+    if (
+        moduleIt == library->nokiModules.end() ||
+        moduleIt->second == nullptr
+    )
+    {
         return {
             RuntimeValue(nullptr),
             FlowControl::NONE
         };
+    }
 
-    auto it = library->functions.find(memberName);
+    Environment* moduleEnvironment =
+        moduleIt->second->getEnvironment();
 
-    if (it == library->functions.end())
+    if (moduleEnvironment == nullptr)
+    {
+        throw std::runtime_error(
+            "Noki module has no environment: " +
+            moduleName
+        );
+    }
+
+    RuntimeValue* moduleValue =
+        moduleEnvironment->findLocalVar(memberName);
+
+    if (moduleValue == nullptr)
+    {
         return {
             RuntimeValue(nullptr),
             FlowControl::NONE
         };
+    }
 
     return {
-        RuntimeValue(nullptr),
+        *moduleValue,
         FlowControl::NONE
     };
 }
@@ -2741,4 +3390,862 @@ EvalResult Interpreter::evalFuncDecl(const ASTNode& node)
         RuntimeValue(nullptr),
         FlowControl::NONE
     };
+}
+
+static const ASTNode* findNokiFieldDeclaration(
+    const ASTNode& declaration,
+    const std::string& fieldName
+)
+{
+    for (const auto& member : declaration.children)
+    {
+        if (
+            member == nullptr ||
+            member->getType() !=
+                TypeNode::CLASS_FIELD_DECLARATION ||
+            member->children.size() != 2 ||
+            member->children[0] == nullptr ||
+            member->children[0]->getType() !=
+                TypeNode::VARIABLE
+        )
+        {
+            continue;
+        }
+
+        if (
+            std::string(member->children[0]->getString()) ==
+            fieldName
+        )
+        {
+            return member.get();
+        }
+    }
+
+    return nullptr;
+}
+
+static const NokiClass& getCanonicalClass(
+    const NokiClassInstance& instance
+)
+{
+    const RuntimeObject* object =
+        runtime.objects.findInstance(
+            instance.getCanonicalDefinitionID()
+        );
+
+    const auto* classDefinition =
+        dynamic_cast<const NokiClass*>(object);
+
+    if (
+        classDefinition == nullptr ||
+        !classDefinition->isCanonical()
+    )
+    {
+        throw std::runtime_error(
+            "Noki class instance has no valid canonical definition."
+        );
+    }
+
+    return *classDefinition;
+}
+
+static const ASTNode* findNokiFieldDeclaration(
+    const NokiClassInstance& instance,
+    const std::string& fieldName
+)
+{
+    const NokiClass& classDefinition =
+        getCanonicalClass(instance);
+
+    return findNokiFieldDeclaration(
+        classDefinition.getDeclaration(),
+        fieldName
+    );
+}
+
+static RuntimeValue defaultNokiFieldValue(
+    TypeNode fieldType
+)
+{
+    switch (fieldType)
+    {
+    case TypeNode::INT:
+    case TypeNode::ANYVALUE:
+        return RuntimeValue(int64_t{0});
+
+    case TypeNode::FLOAT:
+        return RuntimeValue(0.0);
+
+    case TypeNode::BOOL:
+        return RuntimeValue(false);
+
+    case TypeNode::STRING:
+        return RuntimeValue(std::string{});
+
+    case TypeNode::VECTOR:
+        return RuntimeValue(
+            std::make_unique<RuntimeValue_Vector>()
+        );
+
+    default:
+        throw std::runtime_error(
+            "Unsupported Noki class field type."
+        );
+    }
+}
+
+static bool nokiFieldTypeMatches(
+    TypeNode fieldType,
+    const RuntimeValue& value
+)
+{
+    switch (fieldType)
+    {
+    case TypeNode::ANYVALUE:
+        return true;
+
+    case TypeNode::INT:
+        return value.is<int64_t>();
+
+    case TypeNode::FLOAT:
+        return value.is<double>();
+
+    case TypeNode::BOOL:
+        return value.is<bool>();
+
+    case TypeNode::STRING:
+        return value.is<std::string>();
+
+    case TypeNode::VECTOR:
+        return value.isVector();
+
+    default:
+        return false;
+    }
+}
+
+class NokiClassEnvironmentScope
+{
+public:
+    explicit NokiClassEnvironmentScope(
+        Environment* moduleEnvironment
+    )
+        : previous(runtime.current),
+          module(moduleEnvironment)
+    {
+        if (module == nullptr)
+        {
+            throw std::runtime_error(
+                "Noki class has no module environment."
+            );
+        }
+
+        runtime.current = module;
+
+        try
+        {
+            runtime.pushEnvironment();
+        }
+        catch (...)
+        {
+            runtime.current = previous;
+            throw;
+        }
+    }
+
+    ~NokiClassEnvironmentScope() noexcept
+    {
+        while (
+            runtime.current != nullptr &&
+            runtime.current != module &&
+            runtime.current != &runtime.global
+        )
+        {
+            try
+            {
+                runtime.popEnvironment();
+            }
+            catch (...)
+            {
+                break;
+            }
+        }
+
+        runtime.current = previous;
+    }
+
+    NokiClassEnvironmentScope(
+        const NokiClassEnvironmentScope&
+    ) = delete;
+
+    NokiClassEnvironmentScope& operator=(
+        const NokiClassEnvironmentScope&
+    ) = delete;
+
+private:
+    Environment* previous;
+    Environment* module;
+};
+
+static EvalResult instantiateNokiClass(
+    const ASTNode& callNode,
+    NokiClass& classDefinition
+)
+{
+    // Na fase 1, o construtor não recebe argumentos.
+    if (callNode.children.size() != 1)
+    {
+        throw std::runtime_error(
+            "Noki class '" +
+            classDefinition.getClassName() +
+            "' does not support constructor arguments yet."
+        );
+    }
+
+    const ASTNode& declaration =
+        classDefinition.getDeclaration();
+
+    auto instance =
+        runtime.objects.createObject<NokiClassInstance>(
+            classDefinition.getClassTypeID(),
+            classDefinition.getCanonicalDefinitionID(),
+            classDefinition.getModuleEnvironment()
+        );
+
+    std::vector<const ASTNode*> fields;
+    fields.reserve(declaration.children.size());
+
+    // Criar primeiro todos os campos, com valores predefinidos.
+    for (const auto& member : declaration.children)
+    {
+        if (
+            member == nullptr ||
+            member->getType() !=
+                TypeNode::CLASS_FIELD_DECLARATION
+        )
+        {
+            continue;
+        }
+
+        if (
+            member->children.size() != 2 ||
+            member->children[0] == nullptr ||
+            member->children[0]->getType() !=
+                TypeNode::VARIABLE ||
+            member->children[1] == nullptr
+        )
+        {
+            throw std::runtime_error(
+                "Invalid Noki class field declaration."
+            );
+        }
+
+        const std::string fieldName(
+            member->children[0]->getString()
+        );
+
+        instance->createField(
+            fieldName,
+            defaultNokiFieldValue(member->getTypeNode())
+        );
+
+        fields.push_back(member.get());
+    }
+
+    // Inicializar os campos no contexto do módulo.
+    {
+        NokiClassEnvironmentScope scope(
+            classDefinition.getModuleEnvironment()
+        );
+        runtime.current->setExecutionReceiver(instance.get());
+
+        // Todas as referências são criadas apenas depois de
+        // existirem todos os campos da instância.
+        for (const ASTNode* field : fields)
+        {
+            const std::string fieldName(
+                field->children[0]->getString()
+            );
+
+            RuntimeValue* value =
+                instance->findField(fieldName);
+
+            if (value == nullptr)
+            {
+                throw std::runtime_error(
+                    "Noki class field storage is inconsistent."
+                );
+            }
+
+            runtime.current->createReference(
+                fieldName,
+                value
+            );
+        }
+
+        // Avaliar os inicializadores pela ordem da declaração.
+        for (const ASTNode* field : fields)
+        {
+            const std::string fieldName(
+                field->children[0]->getString()
+            );
+
+            EvalResult initialValue =
+                Interpreter::eval(*field->children[1]);
+
+            if (initialValue.control == FlowControl::EXIT)
+            {
+                return {
+                    RuntimeValue(nullptr),
+                    FlowControl::EXIT
+                };
+            }
+
+            if (initialValue.control != FlowControl::NONE)
+            {
+                throw std::runtime_error(
+                    "Invalid control flow in initializer for field '" +
+                    fieldName + "'."
+                );
+            }
+
+            const TypeNode fieldType =
+                field->getTypeNode();
+
+            if (
+                !nokiFieldTypeMatches(
+                    fieldType,
+                    initialValue.value
+                )
+            )
+            {
+                throw std::runtime_error(
+                    "Initializer type mismatch for Noki field '" +
+                    fieldName + "'."
+                );
+            }
+
+            RuntimeValue* fieldValue =
+                instance->findField(fieldName);
+
+            if (fieldValue == nullptr)
+            {
+                throw std::runtime_error(
+                    "Noki class field storage is inconsistent."
+                );
+            }
+
+            *fieldValue = std::move(initialValue.value);
+        }
+    }
+
+    return {
+        RuntimeValue::fromObject(std::move(instance)),
+        FlowControl::NONE
+    };
+}
+
+EvalResult Interpreter::evalClassDeclaration(
+    const ASTNode& node
+)
+{
+    if (
+        node.getType() != TypeNode::CLASS_DECLARATION ||
+        node.children.empty() ||
+        node.children[0] == nullptr ||
+        node.children[0]->getType() != TypeNode::VARIABLE
+    )
+    {
+        throw std::runtime_error(
+            "Invalid Noki class declaration AST."
+        );
+    }
+
+    Environment* moduleEnvironment =
+        runtime.current->getModuleEnvironment();
+
+    // As declarações de topo pertencem ao ambiente do módulo.
+    // As classes aninhadas são processadas recursivamente
+    // dentro do registo da definição exterior.
+    if (runtime.current != moduleEnvironment)
+    {
+        throw std::runtime_error(
+            "Noki class declarations must be at module scope."
+        );
+    }
+
+    const std::string className(
+        node.children[0]->getString()
+    );
+
+    const std::string moduleName =
+        moduleEnvironment->getModuleName();
+
+    if (className.empty() || moduleName.empty())
+    {
+        throw std::runtime_error(
+            "Noki class requires a valid name and module."
+        );
+    }
+
+    if (
+        moduleEnvironment->existLocal(className) ||
+        moduleEnvironment->existLocalNokiFunction(className) ||
+        builtin::findFunction(className) != nullptr
+    )
+    {
+        throw std::runtime_error(
+            "Noki class name conflicts with an existing symbol: " +
+            className
+        );
+    }
+
+    const std::string qualifiedName =
+        moduleName + "::" + className;
+
+    if (runtime.objects.exists(qualifiedName))
+    {
+        throw std::runtime_error(
+            "Noki class type is already registered: " +
+            qualifiedName
+        );
+    }
+
+    // Clonar a AST antes de alterar os registos.
+    auto declarationCopy =
+        ASTNode::ast_clone(node);
+
+    if (declarationCopy == nullptr)
+    {
+        throw std::runtime_error(
+            "Failed to clone Noki class declaration."
+        );
+    }
+
+    const RuntimeObjectTypeID metaTypeID =
+        runtime.getNokiClassMetaTypeID();
+
+    // Reservar o primeiro ID antes de o registar, de modo
+    // que push_back não tenha de alocar depois do registo.
+    std::vector<RuntimeObjectTypeID> registeredTypeIDs;
+    registeredTypeIDs.reserve(1);
+
+    const RuntimeObjectTypeID classTypeID =
+        runtime.objects.registerType(qualifiedName);
+
+    registeredTypeIDs.push_back(classTypeID);
+
+    try
+    {
+        moduleEnvironment->registerNokiClassTypeID(
+            classTypeID
+        );
+
+        auto classObject =
+            runtime.objects.createObject<NokiClass>(
+                metaTypeID,
+                moduleName,
+                className,
+                qualifiedName,
+                classTypeID,
+                moduleEnvironment,
+                std::move(declarationCopy)
+            );
+
+        classObject->establishCanonicalIdentity();
+
+        // Registar todas as definições aninhadas antes
+        // de publicar a classe no ambiente do módulo.
+        classObject->registerNestedClasses(
+            runtime.objects,
+            metaTypeID,
+            registeredTypeIDs
+        );
+
+        RuntimeValue classValue =
+            RuntimeValue::fromObject(
+                std::move(classObject)
+            );
+
+        moduleEnvironment->createConst(
+            className,
+            std::move(classValue)
+        );
+    }
+    catch (...)
+    {
+        // Os objetos temporários da classe e dos seus filhos
+        // são destruídos antes de entrar neste handler.
+        bool rollbackFailed = false;
+
+        for (
+            auto it = registeredTypeIDs.rbegin();
+            it != registeredTypeIDs.rend();
+            ++it
+        )
+        {
+            moduleEnvironment->unregisterNokiClassTypeID(
+                *it
+            );
+
+            if (!runtime.objects.unregisterType(*it))
+            {
+                rollbackFailed = true;
+            }
+        }
+
+        if (rollbackFailed)
+        {
+            throw std::runtime_error(
+                "Critical error: failed to roll back "
+                "Noki class type registrations."
+            );
+        }
+
+        throw;
+    }
+
+    return {
+        RuntimeValue(nullptr),
+        FlowControl::NONE
+    };
+}
+
+static const NokiClass& getCanonicalNokiClass(
+    const NokiClassInstance& instance
+)
+{
+    const RuntimeObject* object =
+        runtime.objects.findInstance(
+            instance.getCanonicalDefinitionID()
+        );
+
+    const auto* classDefinition =
+        dynamic_cast<const NokiClass*>(object);
+
+    if (
+        classDefinition == nullptr ||
+        !classDefinition->isCanonical()
+    )
+    {
+        throw std::runtime_error(
+            "Noki class instance has no valid canonical definition."
+        );
+    }
+
+    return *classDefinition;
+}
+
+static const ASTNode* findNokiClassMethod(
+    const ASTNode& declaration,
+    const std::string& methodName
+)
+{
+    const ASTNode* found = nullptr;
+
+    for (const auto& member : declaration.children)
+    {
+        if (
+            member == nullptr ||
+            member->getType() !=
+                TypeNode::FUNCTION_DECLARATION ||
+            member->children.size() != 2 ||
+            member->children[0] == nullptr ||
+            member->children[0]->getType() !=
+                TypeNode::VARIABLE
+        )
+        {
+            continue;
+        }
+
+        if (
+            member->children[0]->getString() != methodName
+        )
+        {
+            continue;
+        }
+
+        if (found != nullptr)
+        {
+            throw std::runtime_error(
+                "Duplicate method '" + methodName +
+                "' in Noki class declaration."
+            );
+        }
+
+        found = member.get();
+    }
+
+    return found;
+}
+
+EvalResult Interpreter::evalNokiMethodCall(
+    const ASTNode& callNode,
+    const ASTNode& methodDeclaration,
+    NokiClassInstance& instance
+)
+{
+    if (
+        callNode.getType() != TypeNode::FUNCTION_CALL ||
+        callNode.children.empty() ||
+        methodDeclaration.getType() !=
+            TypeNode::FUNCTION_DECLARATION ||
+        methodDeclaration.children.size() != 2 ||
+        methodDeclaration.children[1] == nullptr
+    )
+    {
+        throw std::runtime_error(
+            "Invalid Noki method call."
+        );
+    }
+
+    const auto* parameterStorage =
+        std::get_if<
+            std::unique_ptr<std::vector<FunctionParameter>>
+        >(&methodDeclaration.as);
+
+    if (
+        parameterStorage == nullptr ||
+        !*parameterStorage
+    )
+    {
+        throw std::runtime_error(
+            "Invalid parameter list in Noki method."
+        );
+    }
+
+    const auto& parameters = **parameterStorage;
+
+    const size_t argumentCount =
+        callNode.children.size() - 1;
+
+    if (argumentCount != parameters.size())
+    {
+        throw std::runtime_error(
+            "Noki method expected " +
+            std::to_string(parameters.size()) +
+            " arguments, got " +
+            std::to_string(argumentCount) + "."
+        );
+    }
+
+    // Avaliar os argumentos no contexto do chamador.
+    std::vector<RuntimeValue> argumentValues(argumentCount);
+    std::vector<RuntimeValue*> argumentReferences(
+        argumentCount,
+        nullptr
+    );
+
+    for (size_t i = 0; i < parameters.size(); ++i)
+    {
+        const FunctionParameter& parameter = parameters[i];
+        const ASTNode& argumentNode =
+            *callNode.children[i + 1];
+
+        if (
+            parameter.getMode() ==
+            FunctionParameterMode::MUT
+        )
+        {
+            FlowControl control = FlowControl::NONE;
+
+            RuntimeValue* reference =
+                resolveLValue(argumentNode, control);
+
+            if (control == FlowControl::EXIT)
+            {
+                return {
+                    RuntimeValue(nullptr),
+                    FlowControl::EXIT
+                };
+            }
+
+            if (reference == nullptr)
+            {
+                throw std::runtime_error(
+                    "Noki method parameter '" +
+                    parameter.getName() +
+                    "' requires a mutable lvalue."
+                );
+            }
+
+            argumentReferences[i] = reference;
+        }
+        else
+        {
+            EvalResult argument = eval(argumentNode);
+
+            if (argument.control == FlowControl::EXIT)
+                return argument;
+
+            if (argument.control != FlowControl::NONE)
+            {
+                throw std::runtime_error(
+                    "Invalid control flow in Noki method argument."
+                );
+            }
+
+            argumentValues[i] = std::move(argument.value);
+        }
+    }
+
+    // Validar os tipos dos argumentos.
+    for (size_t i = 0; i < parameters.size(); ++i)
+    {
+        RuntimeValue* value =
+            parameters[i].getMode() ==
+                FunctionParameterMode::MUT
+                ? argumentReferences[i]
+                : &argumentValues[i];
+
+        if (
+            value == nullptr ||
+            !nokiFieldTypeMatches(
+                parameters[i].getType(),
+                *value
+            )
+        )
+        {
+            throw std::runtime_error(
+                "Type mismatch for Noki method parameter '" +
+                parameters[i].getName() + "'."
+            );
+        }
+    }
+
+    const NokiClass& classDefinition =
+        getCanonicalNokiClass(instance);
+
+    // Entrar no âmbito do módulo que definiu a classe.
+    NokiClassEnvironmentScope scope(
+        instance.getModuleEnvironment()
+    );
+
+    // Este ambiente representa o contexto da instância.
+    runtime.current->setExecutionReceiver(&instance);
+
+    // Os campos são referências aos RuntimeValue da instância.
+    for (auto& [fieldName, fieldValue] : instance.getFields())
+    {
+        runtime.current->createReference(
+            fieldName,
+            &fieldValue
+        );
+    }
+
+    // Criar um ambiente separado para parâmetros e variáveis locais.
+    runtime.pushEnvironment();
+
+    for (size_t i = 0; i < parameters.size(); ++i)
+    {
+        const FunctionParameter& parameter = parameters[i];
+
+        if (
+            parameter.getMode() ==
+            FunctionParameterMode::MUT
+        )
+        {
+            runtime.current->createReference(
+                parameter.getName(),
+                argumentReferences[i]
+            );
+        }
+        else if (
+            parameter.getMode() ==
+            FunctionParameterMode::CONST
+        )
+        {
+            runtime.current->createConst(
+                parameter.getName(),
+                std::move(argumentValues[i])
+            );
+        }
+        else
+        {
+            runtime.current->createVar(
+                parameter.getName(),
+                std::move(argumentValues[i])
+            );
+        }
+    }
+
+    // Executar diretamente o corpo conservado na AST canónica.
+    EvalResult result = eval(
+        *methodDeclaration.children[1]
+    );
+
+    if (result.control == FlowControl::EXIT)
+        return result;
+
+    if (result.control == FlowControl::RETURN)
+    {
+        return {
+            std::move(result.value),
+            FlowControl::NONE
+        };
+    }
+
+    if (
+        result.control == FlowControl::BREAK ||
+        result.control == FlowControl::CONTINUE
+    )
+    {
+        throw std::runtime_error(
+            "Invalid break or continue outside a while loop."
+        );
+    }
+
+    if (result.control != FlowControl::NONE)
+    {
+        throw std::runtime_error(
+            "Invalid control flow in Noki method."
+        );
+    }
+
+    return {
+        RuntimeValue(nullptr),
+        FlowControl::NONE
+    };
+}
+
+static bool canAccessNokiMember(
+    const ASTNode& memberDeclaration,
+    const NokiClassInstance& targetInstance
+)
+{
+    if (
+        memberDeclaration.accessModifier ==
+        ASTNode::AccessModifier::PUBLIC
+    )
+    {
+        return true;
+    }
+
+    // Nesta fase, private e protected só são acessíveis
+    // no contexto de execução da mesma classe.
+    if (
+        memberDeclaration.accessModifier !=
+            ASTNode::AccessModifier::PRIVATE &&
+        memberDeclaration.accessModifier !=
+            ASTNode::AccessModifier::PROTECTED
+    )
+    {
+        return false;
+    }
+
+    if (runtime.current == nullptr)
+        return false;
+
+    RuntimeObject* receiver =
+        runtime.current->getExecutionReceiver();
+
+    auto* activeInstance =
+        dynamic_cast<NokiClassInstance*>(receiver);
+
+    if (activeInstance == nullptr)
+        return false;
+
+    return
+        activeInstance->getCanonicalDefinitionID() ==
+        targetInstance.getCanonicalDefinitionID();
 }
