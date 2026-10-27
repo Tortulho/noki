@@ -4,7 +4,7 @@ INCLUDE_DIR = include
 SRC_DIR = src
 LIB_DIR = nokilibs
 
-BASE_CXXFLAGS = -std=c++20 -Wall -Wextra \
+BASE_CXXFLAGS = -std=c++20 -Wall -Wextra -march=native -mtune=native \
                 -I$(INCLUDE_DIR) \
                 -I$(INCLUDE_DIR)/runtime \
                 -I$(INCLUDE_DIR)/runtime/objects \
@@ -13,7 +13,8 @@ BASE_CXXFLAGS = -std=c++20 -Wall -Wextra \
                 -I$(LIB_DIR)/libcpp/dummy \
                 -I$(LIB_DIR)/libcpp/file \
                 -I$(LIB_DIR)/libcpp/string \
-                -I$(LIB_DIR)/libcpp/vector
+                -I$(LIB_DIR)/libcpp/vector \
+                -I$(LIB_DIR)/libcpp/time
 
 SRC = \
     $(SRC_DIR)/ast.cpp \
@@ -31,6 +32,8 @@ SRC = \
     $(SRC_DIR)/runtime/objects/runtimeobjectType.cpp \
     $(SRC_DIR)/runtime/objects/runtimeobjectTypeInitializer.cpp \
     $(SRC_DIR)/runtime/objects/runtimefunc.cpp \
+    $(SRC_DIR)/runtime/objects/nokiClass.cpp \
+    $(SRC_DIR)/runtime/objects/nokiClassInstance.cpp \
     $(SRC_DIR)/env/environment.cpp \
     $(SRC_DIR)/lib/libmanager.cpp \
     $(SRC_DIR)/lib/nokiModule.cpp \
@@ -38,7 +41,9 @@ SRC = \
     $(LIB_DIR)/libcpp/file/file.cpp \
     $(LIB_DIR)/libcpp/file/fileObject.cpp \
     $(LIB_DIR)/libcpp/string/strings.cpp \
-    $(LIB_DIR)/libcpp/vector/vectors.cpp
+    $(LIB_DIR)/libcpp/vector/vectors.cpp \
+    $(LIB_DIR)/libcpp/time/timeObject.cpp \
+    $(LIB_DIR)/libcpp/time/time.cpp
 
 DEBUG_DIR = bin/debug
 NORMAL_DIR = bin/normal
@@ -69,6 +74,5 @@ $(NORMAL_DIR)/%.o: %.cpp
 
 clean:
 	rm -rf bin nokifer nokifer-debug
-
 
 .PHONY: debug optimized clean
