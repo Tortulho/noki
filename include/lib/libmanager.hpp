@@ -10,6 +10,13 @@
 #include "libinitializer.hpp"
 #include "nokiModule.hpp"
 
+enum class NokiLibraryImportResult
+{
+    NOT_FOUND,
+    IMPORTED,
+    EXIT
+};
+
 class LibraryManager
 {
 public:
@@ -27,7 +34,9 @@ public:
     bool isImported(const std::string& name) const;
 
     std::filesystem::path resolveNokiLibrary(const std::string& name) const;
-    bool importNokiLibrary(const std::string& name);
+    NokiLibraryImportResult importNokiLibrary(
+        const std::string& name
+    );
 
 private:
 

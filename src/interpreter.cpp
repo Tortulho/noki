@@ -2937,6 +2937,7 @@ EvalResult Interpreter::evalImport(const ASTNode& node)
 {
     const std::string name(node.getString());
 
+    // Primeiro, tentar importar uma biblioteca C++.
     if (runtime.libraries.importLibrary(name))
     {
         return {
@@ -2945,16 +2946,32 @@ EvalResult Interpreter::evalImport(const ASTNode& node)
         };
     }
 
-    if (runtime.libraries.importNokiLibrary(name))
+    // Depois, tentar importar uma biblioteca Noki.
+    const NokiLibraryImportResult result =
+        runtime.libraries.importNokiLibrary(name);
+
+    switch (result)
     {
-        return {
-            RuntimeValue(true),
-            FlowControl::NONE
-        };
+        case NokiLibraryImportResult::IMPORTED:
+            return {
+                RuntimeValue(true),
+                FlowControl::NONE
+            };
+
+        case NokiLibraryImportResult::EXIT:
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::EXIT
+            };
+
+        case NokiLibraryImportResult::NOT_FOUND:
+            throw std::runtime_error(
+                "Library not found: " + name
+            );
     }
 
     throw std::runtime_error(
-        "Library not found: " + name
+        "Invalid Noki library import result."
     );
 }
 

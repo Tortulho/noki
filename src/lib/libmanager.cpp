@@ -167,15 +167,14 @@ std::filesystem::path LibraryManager::resolveNokiLibrary(
     return std::filesystem::weakly_canonical(path);
 }
 
-bool LibraryManager::importNokiLibrary(
-    const std::string& name
-)
+
+NokiLibraryImportResult LibraryManager::importNokiLibrary(const std::string& name)
 {
     if (isImported(name))
-        return true;
+        return NokiLibraryImportResult::IMPORTED;
 
     if (exists(name))
-        return false;
+        return NokiLibraryImportResult::NOT_FOUND;
 
     const std::filesystem::path path =
         resolveNokiLibrary(name);
@@ -215,10 +214,10 @@ bool LibraryManager::importNokiLibrary(
     }
 
     auto environment =
-    std::make_unique<Environment>(
-        nullptr,
-        path.generic_string()
-    );
+        std::make_unique<Environment>(
+            nullptr,
+            path.generic_string()
+        );
 
     auto module =
         std::make_unique<NokiModule>(
@@ -261,11 +260,20 @@ bool LibraryManager::importNokiLibrary(
                 *modulePtr->getAST()
             );
 
-        if (result.control != FlowControl::NONE)
+        // EXIT é um fluxo válido da linguagem.
+        // Restaurar o ambiente anterior e propagar.
+        if (result.control == FlowControl::EXIT)
         {
             runtimeInstance->current =
                 previousEnvironment;
 
+            return NokiLibraryImportResult::EXIT;
+        }
+
+        // Os restantes fluxos continuam inválidos
+        // quando escapam da execução do módulo.
+        if (result.control != FlowControl::NONE)
+        {
             throw std::runtime_error(
                 "Invalid control flow escaped "
                 "Noki library '" +
@@ -314,5 +322,5 @@ bool LibraryManager::importNokiLibrary(
 
     importedLibraries.insert(name);
 
-    return true;
+    return NokiLibraryImportResult::IMPORTED;
 }
