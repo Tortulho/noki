@@ -5,6 +5,11 @@
 #include "runtime/runtime.hpp"
 #include "ast.hpp"
 
+#include <string>
+
+class NokiClass;
+class NokiClassInstance;
+
 enum class FlowControl
 {
     NONE,
@@ -21,35 +26,46 @@ struct EvalResult
     FlowControl control = FlowControl::NONE;
 };
 
-class NokiClassInstance;
+class Interpreter
+{
+public:
+    static EvalResult eval(const ASTNode& node);
 
-class Interpreter {
+private:
+    static EvalResult evalBinary(const ASTNode& node);
+    static EvalResult evalAssign(const ASTNode& node);
+    static EvalResult evalVar(const ASTNode& node);
+    static EvalResult evalFuncCall(const ASTNode& node);
+    static EvalResult evalUni(const ASTNode& node);
+    static EvalResult evalBlock(const ASTNode& node);
+    static EvalResult evalIf(const ASTNode& node);
+    static EvalResult evalWhile(const ASTNode& node);
+    static EvalResult evalImport(const ASTNode& node);
+    static EvalResult evalMemberAccess(const ASTNode& node);
+    static EvalResult evalVector(const ASTNode& node);
+    static EvalResult evalIndex(const ASTNode& node);
 
-    public:
-        static EvalResult  eval(const ASTNode& node);
-    private:
-        static EvalResult  evalBinary(const ASTNode& node);
-        static EvalResult  evalAssign(const ASTNode& node);
-        static EvalResult  evalVar(const ASTNode& node);
-        static EvalResult  evalFuncCall(const ASTNode& node);
-        static EvalResult  evalUni(const ASTNode& node);
-        static EvalResult  evalBlock(const ASTNode& node);
-        static EvalResult  evalIf(const ASTNode& node);
-        static EvalResult  evalWhile(const ASTNode& node);
-        static EvalResult  evalImport(const ASTNode& node);
-        static EvalResult  evalMemberAccess(const ASTNode& node);
-        static EvalResult  evalVector(const ASTNode& node);
-        static EvalResult  evalIndex(const ASTNode& node);
-        static RuntimeValue* resolveLValue(const ASTNode& node, FlowControl& control);
-        static EvalResult  evalFuncDecl(const ASTNode& node);
-        static EvalResult evalMove(const ASTNode& node);
-        static EvalResult evalClassDeclaration(const ASTNode& node);
-        static EvalResult evalNokiMethodCall(
-            const ASTNode& callNode,
-            const ASTNode& methodDeclaration,
-            NokiClassInstance& instance
-        );
+    static RuntimeValue* resolveLValue(
+        const ASTNode& node,
+        FlowControl& control
+    );
 
+    static EvalResult evalFuncDecl(const ASTNode& node);
+    static EvalResult evalMove(const ASTNode& node);
+    static EvalResult evalClassDeclaration(const ASTNode& node);
+
+    static EvalResult instantiateNokiClass(
+        const ASTNode& callNode,
+        NokiClass& classDefinition
+    );
+
+    static EvalResult evalNokiMethodCall(
+        const ASTNode& callNode,
+        const ASTNode& classDeclaration,
+        const std::string& methodName,
+        NokiClassInstance& instance,
+        bool allowDefaultConstruction
+    );
 };
 
 #endif

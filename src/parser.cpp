@@ -33,11 +33,12 @@ std::unique_ptr<ASTNode> Parser::parse() {
 
 std::unique_ptr<ASTNode> Parser::parseFuncDecl()
 {
-    // consumir "function"
+    // Consumir "function".
     idx_currentToken++;
 
-    // nome da função
-    if (current.getType() != Token::IDENTIFIER) return nullptr;
+    // Nome da função.
+    if (current.getType() != Token::IDENTIFIER)
+        return nullptr;
 
     auto name = ASTNode::ast_newVar(
         current.getString()
@@ -45,13 +46,14 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
 
     idx_currentToken++;
 
-    if (current.getType() != Token::OPENPAR) return nullptr;
+    if (current.getType() != Token::OPENPAR)
+        return nullptr;
 
     idx_currentToken++;
 
     std::vector<FunctionParameter> parameters;
 
-    // função sem argumentos
+    // Função sem argumentos.
     if (current.getType() == Token::CLOSEPAR)
     {
         idx_currentToken++;
@@ -69,7 +71,7 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
             std::string parameterName;
 
             /*
-             * Qualificador:
+             * Qualificadores:
              *
              * mut
              * const
@@ -121,7 +123,7 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
 
                 idx_currentToken++;
 
-                // int: a
+                // Tipo explicitamente declarado.
                 if (current.getType() == Token::COLON)
                 {
                     if (first == "int")
@@ -139,6 +141,9 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
                     else if (first == "vector")
                         parameterType =
                             ASTNode::TypeNode::VECTOR;
+                    else if (first == "any")
+                        parameterType =
+                            ASTNode::TypeNode::ANYVALUE;
                     else
                         return nullptr;
 
@@ -152,13 +157,11 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
 
                     idx_currentToken++;
                 }
-                // a
                 else
                 {
                     /*
-                     * Se tivermos um qualificador, o primeiro
-                     * identifier tem obrigatoriamente de ser um
-                     * tipo.
+                     * Quando não existe tipo explícito,
+                     * o parâmetro é ANYVALUE.
                      */
                     if (
                         parameterMode !=
@@ -195,10 +198,11 @@ std::unique_ptr<ASTNode> Parser::parseFuncDecl()
         }
     }
 
-    // corpo
+    // Corpo.
     auto body = parseBlock();
 
-    if (body == nullptr) return nullptr;
+    if (body == nullptr)
+        return nullptr;
 
     return ASTNode::ast_newFunctionDeclaration(
         std::move(name),
@@ -216,7 +220,13 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
     if (current.getType() != Token::IDENTIFIER)
         return nullptr;
 
-    auto name = ASTNode::ast_newVar(current.getString());
+    const std::string className(
+        current.getString()
+    );
+
+    auto name =
+        ASTNode::ast_newVar(current.getString());
+
     idx_currentToken++;
 
     // Abertura do corpo.
@@ -226,7 +236,9 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
     idx_currentToken++;
 
     auto declaration =
-        ASTNode::ast_newClassDeclaration(std::move(name));
+        ASTNode::ast_newClassDeclaration(
+            std::move(name)
+        );
 
     // Por omissão, os membros são públicos.
     ASTNode::AccessModifier currentAccess =
@@ -294,7 +306,7 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
         if (current.getType() == Token::END_OF_FILE)
             return nullptr;
 
-        // Alterar o modificador de acesso atual.
+        // Modificadores de acesso.
         if (
             current.getType() == Token::PUBLIC ||
             current.getType() == Token::PRIVATE ||
@@ -337,10 +349,9 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
             continue;
         }
 
-            // Declaração de uma classe aninhada.
+        // Declaração de uma classe aninhada.
         if (current.getType() == Token::CLASS)
         {
-            // A chamada recursiva consome a declaração completa.
             auto nestedClass = parseClassDecl();
 
             if (
@@ -365,7 +376,6 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
                 );
             }
 
-            // Preservar public/private/protected na própria declaração.
             nestedClass->accessModifier = currentAccess;
 
             declaration->children.push_back(
@@ -393,8 +403,146 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
                 return nullptr;
             }
 
-            if (memberNameExists(method->children[0]->getString()))
+            const std::string methodName(
+                method->children[0]->getString()
+            );
+
+            // A única declaração válida de construtor é init.
+            if (methodName == className)
             {
+                throw std::runtime_error(
+                    "SYNTAX ERROR (CLASS DECLARATION): "
+                    "Constructors must be declared as 'func init(...)'."
+                );
+            }
+
+            if (methodName == "init")
+            {
+                const auto* newParameterStorage =
+                    std::get_if<
+                        std::unique_ptr<
+                            std::vector<FunctionParameter>
+                        >
+                    >(&method->as);
+
+                if (
+                    newParameterStorage == nullptr ||
+                    !*newParameterStorage
+                )
+                {
+                    throw std::runtime_error(
+                        "SYNTAX ERROR: Invalid init parameter declaration."
+                    );
+                }
+
+                const auto& newParameters =
+                    **newParameterStorage;
+
+                // Todos os parâmetros de init são passados por valor.
+                // MUT não é permitido.
+                for (const FunctionParameter& parameter : newParameters)
+                {
+                    if (
+                        parameter.getMode() ==
+                        FunctionParameterMode::MUT
+                    )
+                    {
+                        throw std::runtime_error(
+                            "SYNTAX ERROR: "
+                            "Noki init parameters cannot use mut."
+                        );
+                    }
+                }
+
+                // Verificar sobrecargas init anteriores.
+                for (const auto& existing : declaration->children)
+                {
+                    if (
+                        existing == nullptr ||
+                        existing->children.empty() ||
+                        existing->children[0] == nullptr ||
+                        existing->children[0]->getType() !=
+                            ASTNode::TypeNode::VARIABLE ||
+                        existing->children[0]->getString() != "init"
+                    )
+                    {
+                        continue;
+                    }
+
+                    // Não permitir colisões com campos ou classes.
+                    if (
+                        existing->getType() !=
+                        ASTNode::TypeNode::FUNCTION_DECLARATION
+                    )
+                    {
+                        throw std::runtime_error(
+                            "SYNTAX ERROR (CLASS DECLARATION): "
+                            "Duplicated member names at class declaration."
+                        );
+                    }
+
+                    const auto* existingParameterStorage =
+                        std::get_if<
+                            std::unique_ptr<
+                                std::vector<FunctionParameter>
+                            >
+                        >(&existing->as);
+
+                    if (
+                        existingParameterStorage == nullptr ||
+                        !*existingParameterStorage
+                    )
+                    {
+                        throw std::runtime_error(
+                            "SYNTAX ERROR: Invalid existing init declaration."
+                        );
+                    }
+
+                    const auto& existingParameters =
+                        **existingParameterStorage;
+
+                    // Diferentes quantidades de parâmetros:
+                    // sobrecargas permitidas.
+                    if (
+                        existingParameters.size() !=
+                        newParameters.size()
+                    )
+                    {
+                        continue;
+                    }
+
+                    bool sameSignature = true;
+
+                    for (
+                        size_t i = 0;
+                        i < newParameters.size();
+                        ++i
+                    )
+                    {
+                        // Os nomes e qualificadores não fazem
+                        // parte da assinatura do init.
+                        if (
+                            existingParameters[i].getType() !=
+                            newParameters[i].getType()
+                        )
+                        {
+                            sameSignature = false;
+                            break;
+                        }
+                    }
+
+                    if (sameSignature)
+                    {
+                        throw std::runtime_error(
+                            "SYNTAX ERROR (CLASS DECLARATION): "
+                            "Duplicate init signature."
+                        );
+                    }
+                }
+            }
+            else if (memberNameExists(methodName))
+            {
+                // Métodos normais continuam sem sobrecargas.
                 throw std::runtime_error(
                     "SYNTAX ERROR (CLASS DECLARATION): "
                     "Duplicated member names at class declaration."
@@ -414,7 +562,9 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
         if (current.getType() != Token::IDENTIFIER)
             return nullptr;
 
-        std::string_view typeName = current.getString();
+        std::string_view typeName =
+            current.getString();
+
         idx_currentToken++;
 
         if (current.getType() != Token::COLON)
@@ -426,7 +576,8 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
         if (current.getType() != Token::IDENTIFIER)
             return nullptr;
 
-        std::string_view fieldName = current.getString();
+        std::string_view fieldName =
+            current.getString();
 
         auto fieldNameNode =
             ASTNode::ast_newVar(fieldName);
@@ -451,9 +602,9 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
             fieldType = ASTNode::TypeNode::ANYVALUE;
         else
             throw std::runtime_error(
-                    "SYNTAX ERROR (CLASS DECLARATION): "
-                    "Invalid defition of variable at class declaration."
-                );
+                "SYNTAX ERROR (CLASS DECLARATION): "
+                "Invalid defition of variable at class declaration."
+            );
 
         // Rejeitar nomes duplicados entre campos, métodos
         // e classes aninhadas.
@@ -470,7 +621,6 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
 
         if (current.getType() == Token::TokenType::EQUAL)
         {
-            // Consumir "=" e analisar a expressão.
             idx_currentToken++;
 
             defaultValue = parseAssignment();
@@ -484,23 +634,28 @@ std::unique_ptr<ASTNode> Parser::parseClassDecl()
             {
             case ASTNode::TypeNode::INT:
             case ASTNode::TypeNode::ANYVALUE:
-                defaultValue = ASTNode::ast_newInt(0);
+                defaultValue =
+                    ASTNode::ast_newInt(0);
                 break;
 
             case ASTNode::TypeNode::FLOAT:
-                defaultValue = ASTNode::ast_newFloat(0.0);
+                defaultValue =
+                    ASTNode::ast_newFloat(0.0);
                 break;
 
             case ASTNode::TypeNode::BOOL:
-                defaultValue = ASTNode::ast_newBool(false);
+                defaultValue =
+                    ASTNode::ast_newBool(false);
                 break;
 
             case ASTNode::TypeNode::STRING:
-                defaultValue = ASTNode::ast_newString("");
+                defaultValue =
+                    ASTNode::ast_newString("");
                 break;
 
             case ASTNode::TypeNode::VECTOR:
-                defaultValue = ASTNode::ast_newVector();
+                defaultValue =
+                    ASTNode::ast_newVector();
                 break;
 
             default:

@@ -54,11 +54,6 @@ static bool nokiFieldTypeMatches(
     const RuntimeValue& value
 );
 
-static EvalResult instantiateNokiClass(
-    const ASTNode& callNode,
-    NokiClass& classDefinition
-);
-
 static bool canAccessNestedNokiClass(
     const NokiClass& parentClass,
     const NokiClass& nestedClass
@@ -960,6 +955,18 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
             const NokiClass& classDefinition =
                 getCanonicalNokiClass(*activeInstance);
 
+            // init utiliza a resolução de sobrecargas.
+            if (name == "init")
+            {
+                return evalNokiMethodCall(
+                    node,
+                    classDefinition.getDeclaration(),
+                    "init",
+                    *activeInstance,
+                    false
+                );
+            }
+
             const ASTNode* method =
                 findNokiClassMethod(
                     classDefinition.getDeclaration(),
@@ -977,8 +984,10 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
 
                 return evalNokiMethodCall(
                     node,
-                    *method,
-                    *activeInstance
+                    classDefinition.getDeclaration(),
+                    name,
+                    *activeInstance,
+                    false
                 );
             }
         }
@@ -1934,6 +1943,18 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
                     const NokiClass& classDefinition =
                         getCanonicalNokiClass(*instance);
 
+                    // Chamada direta de init numa instância existente.
+                    if (functionName == "init")
+                    {
+                        return evalNokiMethodCall(
+                            node,
+                            classDefinition.getDeclaration(),
+                            "init",
+                            *instance,
+                            false
+                        );
+                    }
+
                     const ASTNode* method =
                         findNokiClassMethod(
                             classDefinition.getDeclaration(),
@@ -1962,8 +1983,10 @@ EvalResult Interpreter::evalFuncCall(const ASTNode& node)
 
                     return evalNokiMethodCall(
                         node,
-                        *method,
-                        *instance
+                        classDefinition.getDeclaration(),
+                        functionName,
+                        *instance,
+                        false
                     );
                 }
 
@@ -3604,24 +3627,24 @@ private:
     Environment* module;
 };
 
-static EvalResult instantiateNokiClass(
+EvalResult Interpreter::instantiateNokiClass(
     const ASTNode& callNode,
-    NokiClass& classDefinition
-)
+    NokiClass& classDefinition)
 {
-    // Na fase 1, o construtor não recebe argumentos.
-    if (callNode.children.size() != 1)
+    if (
+        callNode.getType() != TypeNode::FUNCTION_CALL ||
+        callNode.children.empty()
+    )
     {
         throw std::runtime_error(
-            "Noki class '" +
-            classDefinition.getClassName() +
-            "' does not support constructor arguments yet."
+            "Invalid Noki class construction."
         );
     }
 
     const ASTNode& declaration =
         classDefinition.getDeclaration();
 
+    // Criar a instância sob ownership RAII.
     auto instance =
         runtime.objects.createObject<NokiClassInstance>(
             classDefinition.getClassTypeID(),
@@ -3630,9 +3653,10 @@ static EvalResult instantiateNokiClass(
         );
 
     std::vector<const ASTNode*> fields;
+
     fields.reserve(declaration.children.size());
 
-    // Criar primeiro todos os campos, com valores predefinidos.
+    // Primeiro criar todos os campos com valores predefinidos.
     for (const auto& member : declaration.children)
     {
         if (
@@ -3674,10 +3698,13 @@ static EvalResult instantiateNokiClass(
         NokiClassEnvironmentScope scope(
             classDefinition.getModuleEnvironment()
         );
-        runtime.current->setExecutionReceiver(instance.get());
 
-        // Todas as referências são criadas apenas depois de
-        // existirem todos os campos da instância.
+        runtime.current->setExecutionReceiver(
+            instance.get()
+        );
+
+        // Todas as referências são criadas depois
+        // de existirem todos os campos.
         for (const ASTNode* field : fields)
         {
             const std::string fieldName(
@@ -3752,8 +3779,30 @@ static EvalResult instantiateNokiClass(
                 );
             }
 
-            *fieldValue = std::move(initialValue.value);
+            *fieldValue =
+                std::move(initialValue.value);
         }
+    }
+
+    // Executar o construtor através do executor normal.
+    //
+    // true permite a construção sem argumentos quando
+    // a classe não declara qualquer init.
+    EvalResult constructorResult =
+        evalNokiMethodCall(
+            callNode,
+            declaration,
+            "init",
+            *instance,
+            true
+        );
+
+    if (
+        constructorResult.control !=
+        FlowControl::NONE
+    )
+    {
+        return constructorResult;
     }
 
     return {
@@ -3960,6 +4009,9 @@ static const ASTNode* findNokiClassMethod(
 {
     const ASTNode* found = nullptr;
 
+    if (methodName == "init")
+        return nullptr;
+
     for (const auto& member : declaration.children)
     {
         if (
@@ -3998,17 +4050,14 @@ static const ASTNode* findNokiClassMethod(
 
 EvalResult Interpreter::evalNokiMethodCall(
     const ASTNode& callNode,
-    const ASTNode& methodDeclaration,
-    NokiClassInstance& instance
-)
+    const ASTNode& classDeclaration,
+    const std::string& methodName,
+    NokiClassInstance& instance,
+    bool allowDefaultConstruction)
 {
     if (
         callNode.getType() != TypeNode::FUNCTION_CALL ||
-        callNode.children.empty() ||
-        methodDeclaration.getType() !=
-            TypeNode::FUNCTION_DECLARATION ||
-        methodDeclaration.children.size() != 2 ||
-        methodDeclaration.children[1] == nullptr
+        callNode.children.empty()
     )
     {
         throw std::runtime_error(
@@ -4016,81 +4065,179 @@ EvalResult Interpreter::evalNokiMethodCall(
         );
     }
 
-    const auto* parameterStorage =
-        std::get_if<
-            std::unique_ptr<std::vector<FunctionParameter>>
-        >(&methodDeclaration.as);
-
-    if (
-        parameterStorage == nullptr ||
-        !*parameterStorage
-    )
-    {
-        throw std::runtime_error(
-            "Invalid parameter list in Noki method."
-        );
-    }
-
-    const auto& parameters = **parameterStorage;
+    const bool isInit =
+        methodName == "init";
 
     const size_t argumentCount =
         callNode.children.size() - 1;
 
-    if (argumentCount != parameters.size())
+    struct MethodCandidate
     {
+        const ASTNode* declaration;
+
+        const std::vector<FunctionParameter>* parameters;
+    };
+
+    std::vector<MethodCandidate> candidates;
+
+    // Localizar todas as declarações do método.
+    for (const auto& member : classDeclaration.children)
+    {
+        if (
+            member == nullptr ||
+            member->getType() !=
+                TypeNode::FUNCTION_DECLARATION ||
+            member->children.size() != 2 ||
+            member->children[0] == nullptr ||
+            member->children[0]->getType() !=
+                TypeNode::VARIABLE
+        )
+        {
+            continue;
+        }
+
+        if (
+            member->children[0]->getString() !=
+            methodName
+        )
+        {
+            continue;
+        }
+
+        const auto* parameterStorage =
+            std::get_if<
+                std::unique_ptr<
+                    std::vector<FunctionParameter>
+                >
+            >(&member->as);
+
+        if (
+            parameterStorage == nullptr ||
+            !*parameterStorage
+        )
+        {
+            throw std::runtime_error(
+                "Invalid Noki method parameter declaration."
+            );
+        }
+
+        const auto* parameters =
+            parameterStorage->get();
+
+        // init nunca admite parâmetros MUT.
+        if (isInit)
+        {
+            for (const FunctionParameter& parameter : *parameters)
+            {
+                if (
+                    parameter.getMode() ==
+                    FunctionParameterMode::MUT
+                )
+                {
+                    throw std::runtime_error(
+                        "Noki init parameters cannot use mut."
+                    );
+                }
+            }
+        }
+
+        candidates.push_back({
+            member.get(),
+            parameters
+        });
+    }
+
+    // Ausência de init.
+    if (candidates.empty())
+    {
+        if (
+            isInit &&
+            allowDefaultConstruction &&
+            argumentCount == 0
+        )
+        {
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::NONE
+            };
+        }
+
+        if (isInit)
+        {
+            throw std::runtime_error(
+                "Noki class '" +
+                getCanonicalNokiClass(instance).getClassName() +
+                "' has no matching init constructor."
+            );
+        }
+
         throw std::runtime_error(
-            "Noki method expected " +
-            std::to_string(parameters.size()) +
-            " arguments, got " +
-            std::to_string(argumentCount) + "."
+            "Method '" + methodName +
+            "' not found in Noki class."
         );
     }
 
-    // Avaliar os argumentos no contexto do chamador.
-    std::vector<RuntimeValue> argumentValues(argumentCount);
+    // Métodos normais continuam a exigir uma única declaração.
+    if (!isInit && candidates.size() != 1)
+    {
+        throw std::runtime_error(
+            "Duplicate method '" +
+            methodName +
+            "' in Noki class declaration."
+        );
+    }
+
+    // Filtrar as declarações pelo número de argumentos.
+    std::vector<MethodCandidate> arityCandidates;
+
+    for (const MethodCandidate& candidate : candidates)
+    {
+        if (
+            candidate.parameters->size() ==
+            argumentCount
+        )
+        {
+            arityCandidates.push_back(candidate);
+        }
+    }
+
+    if (arityCandidates.empty())
+    {
+        throw std::runtime_error(
+            "No matching overload of '" +
+            methodName +
+            "' accepts " +
+            std::to_string(argumentCount) +
+            " arguments."
+        );
+    }
+
+    std::vector<RuntimeValue> argumentValues(
+        argumentCount
+    );
+
     std::vector<RuntimeValue*> argumentReferences(
         argumentCount,
         nullptr
     );
 
-    for (size_t i = 0; i < parameters.size(); ++i)
+    // Avaliar os argumentos.
+    //
+    // Para init, todos são passados por valor.
+    // Para os restantes métodos, preservar MUT/CONST/NORMAL.
+    if (isInit)
     {
-        const FunctionParameter& parameter = parameters[i];
-        const ASTNode& argumentNode =
-            *callNode.children[i + 1];
-
-        if (
-            parameter.getMode() ==
-            FunctionParameterMode::MUT
-        )
+        for (size_t i = 0; i < argumentCount; ++i)
         {
-            FlowControl control = FlowControl::NONE;
-
-            RuntimeValue* reference =
-                resolveLValue(argumentNode, control);
-
-            if (control == FlowControl::EXIT)
-            {
-                return {
-                    RuntimeValue(nullptr),
-                    FlowControl::EXIT
-                };
-            }
-
-            if (reference == nullptr)
+            if (callNode.children[i + 1] == nullptr)
             {
                 throw std::runtime_error(
-                    "Noki method parameter '" +
-                    parameter.getName() +
-                    "' requires a mutable lvalue."
+                    "Invalid Noki init argument."
                 );
             }
 
-            argumentReferences[i] = reference;
-        }
-        else
-        {
-            EvalResult argument = eval(argumentNode);
+            EvalResult argument =
+                eval(*callNode.children[i + 1]);
 
             if (argument.control == FlowControl::EXIT)
                 return argument;
@@ -4098,50 +4245,262 @@ EvalResult Interpreter::evalNokiMethodCall(
             if (argument.control != FlowControl::NONE)
             {
                 throw std::runtime_error(
-                    "Invalid control flow in Noki method argument."
+                    "Invalid control flow in Noki init argument."
                 );
             }
 
-            argumentValues[i] = std::move(argument.value);
+            argumentValues[i] =
+                std::move(argument.value);
+        }
+    }
+    else
+    {
+        const auto& parameters =
+            *arityCandidates[0].parameters;
+
+        for (size_t i = 0; i < parameters.size(); ++i)
+        {
+            const FunctionParameter& parameter =
+                parameters[i];
+
+            if (callNode.children[i + 1] == nullptr)
+            {
+                throw std::runtime_error(
+                    "Invalid Noki method argument."
+                );
+            }
+
+            const ASTNode& argumentNode =
+                *callNode.children[i + 1];
+
+            if (
+                parameter.getMode() ==
+                FunctionParameterMode::MUT
+            )
+            {
+                FlowControl control =
+                    FlowControl::NONE;
+
+                RuntimeValue* reference =
+                    resolveLValue(
+                        argumentNode,
+                        control
+                    );
+
+                if (control == FlowControl::EXIT)
+                {
+                    return {
+                        RuntimeValue(nullptr),
+                        FlowControl::EXIT
+                    };
+                }
+
+                if (control != FlowControl::NONE)
+                {
+                    throw std::runtime_error(
+                        "Invalid control flow in mutable "
+                        "Noki method argument."
+                    );
+                }
+
+                if (reference == nullptr)
+                {
+                    throw std::runtime_error(
+                        "Noki method parameter '" +
+                        parameter.getName() +
+                        "' requires a mutable lvalue."
+                    );
+                }
+
+                argumentReferences[i] = reference;
+            }
+            else
+            {
+                EvalResult argument =
+                    eval(argumentNode);
+
+                if (argument.control == FlowControl::EXIT)
+                    return argument;
+
+                if (argument.control != FlowControl::NONE)
+                {
+                    throw std::runtime_error(
+                        "Invalid control flow in Noki method argument."
+                    );
+                }
+
+                argumentValues[i] =
+                    std::move(argument.value);
+            }
         }
     }
 
-    // Validar os tipos dos argumentos.
-    for (size_t i = 0; i < parameters.size(); ++i)
-    {
-        RuntimeValue* value =
-            parameters[i].getMode() ==
-                FunctionParameterMode::MUT
-                ? argumentReferences[i]
-                : &argumentValues[i];
+    // Verificar a compatibilidade dos tipos.
+    std::vector<MethodCandidate> compatible;
 
-        if (
-            value == nullptr ||
-            !nokiFieldTypeMatches(
-                parameters[i].getType(),
-                *value
-            )
-        )
+    for (const MethodCandidate& candidate : arityCandidates)
+    {
+        bool matches = true;
+
+        for (size_t i = 0; i < argumentCount; ++i)
         {
-            throw std::runtime_error(
-                "Type mismatch for Noki method parameter '" +
-                parameters[i].getName() + "'."
+            RuntimeValue* value = nullptr;
+
+            if (
+                !isInit &&
+                (*candidate.parameters)[i].getMode() ==
+                    FunctionParameterMode::MUT
+            )
+            {
+                value = argumentReferences[i];
+            }
+            else
+            {
+                value = &argumentValues[i];
+            }
+
+            if (
+                value == nullptr ||
+                !nokiFieldTypeMatches(
+                    (*candidate.parameters)[i].getType(),
+                    *value
+                )
+            )
+            {
+                matches = false;
+                break;
+            }
+        }
+
+        if (matches)
+        {
+            compatible.push_back(candidate);
+        }
+    }
+
+    if (compatible.empty())
+    {
+        throw std::runtime_error(
+            "No compatible overload of '" +
+            methodName +
+            "' found in Noki class."
+        );
+    }
+
+    // Verificar qual assinatura é mais específica.
+    //
+    // Um tipo concreto prevalece sobre ANYVALUE.
+    // Uma assinatura só domina outra quando é pelo menos
+    // tão específica em todas as posições e mais específica
+    // em pelo menos uma.
+    auto dominates =
+        [](const std::vector<FunctionParameter>& left,
+           const std::vector<FunctionParameter>& right)
+            -> bool
+    {
+        if (left.size() != right.size())
+            return false;
+
+        bool moreSpecific = false;
+
+        for (size_t i = 0; i < left.size(); ++i)
+        {
+            const TypeNode leftType =
+                left[i].getType();
+
+            const TypeNode rightType =
+                right[i].getType();
+
+            if (leftType == rightType)
+                continue;
+
+            if (
+                rightType == TypeNode::ANYVALUE &&
+                leftType != TypeNode::ANYVALUE
+            )
+            {
+                moreSpecific = true;
+                continue;
+            }
+
+            return false;
+        }
+
+        return moreSpecific;
+    };
+
+    std::vector<const MethodCandidate*> bestCandidates;
+
+    for (size_t i = 0; i < compatible.size(); ++i)
+    {
+        bool dominated = false;
+
+        for (size_t j = 0; j < compatible.size(); ++j)
+        {
+            if (i == j)
+                continue;
+
+            if (
+                dominates(
+                    *compatible[j].parameters,
+                    *compatible[i].parameters
+                )
+            )
+            {
+                dominated = true;
+                break;
+            }
+        }
+
+        if (!dominated)
+        {
+            bestCandidates.push_back(
+                &compatible[i]
             );
         }
     }
 
-    const NokiClass& classDefinition =
-        getCanonicalNokiClass(instance);
+    if (bestCandidates.size() != 1)
+    {
+        throw std::runtime_error(
+            "Ambiguous overload of '" +
+            methodName + "' in Noki class."
+        );
+    }
 
-    // Entrar no âmbito do módulo que definiu a classe.
+    const ASTNode& selectedMethod =
+        *bestCandidates[0]->declaration;
+
+    const auto& parameters =
+        *bestCandidates[0]->parameters;
+
+    // Verificar o acesso à sobrecarga selecionada.
+    if (
+        !canAccessNokiMember(
+            selectedMethod,
+            instance
+        )
+    )
+    {
+        throw std::runtime_error(
+            "Access denied to method '" +
+            methodName + "'."
+        );
+    }
+
+    // Validar a identidade canónica da instância.
+    (void)getCanonicalNokiClass(instance);
+
+    // Entrar no âmbito do módulo da classe.
     NokiClassEnvironmentScope scope(
         instance.getModuleEnvironment()
     );
 
-    // Este ambiente representa o contexto da instância.
-    runtime.current->setExecutionReceiver(&instance);
+    runtime.current->setExecutionReceiver(
+        &instance
+    );
 
-    // Os campos são referências aos RuntimeValue da instância.
+    // Disponibilizar os campos como referências.
     for (auto& [fieldName, fieldValue] : instance.getFields())
     {
         runtime.current->createReference(
@@ -4150,14 +4509,23 @@ EvalResult Interpreter::evalNokiMethodCall(
         );
     }
 
-    // Criar um ambiente separado para parâmetros e variáveis locais.
+    // Criar ambiente próprio para parâmetros e variáveis locais.
     runtime.pushEnvironment();
 
     for (size_t i = 0; i < parameters.size(); ++i)
     {
-        const FunctionParameter& parameter = parameters[i];
+        const FunctionParameter& parameter =
+            parameters[i];
 
-        if (
+        if (isInit)
+        {
+            // Parâmetros de init são sempre constantes.
+            runtime.current->createConst(
+                parameter.getName(),
+                std::move(argumentValues[i])
+            );
+        }
+        else if (
             parameter.getMode() ==
             FunctionParameterMode::MUT
         )
@@ -4186,16 +4554,34 @@ EvalResult Interpreter::evalNokiMethodCall(
         }
     }
 
-    // Executar diretamente o corpo conservado na AST canónica.
-    EvalResult result = eval(
-        *methodDeclaration.children[1]
-    );
+    // Executar o corpo da declaração selecionada.
+    EvalResult result =
+        eval(*selectedMethod.children[1]);
 
     if (result.control == FlowControl::EXIT)
         return result;
 
     if (result.control == FlowControl::RETURN)
     {
+        if (isInit)
+        {
+            // init pode terminar sem devolver um valor.
+            if (
+                !result.value.is<void*>() ||
+                result.value.get<void*>() != nullptr
+            )
+            {
+                throw std::runtime_error(
+                    "Noki init cannot return a value."
+                );
+            }
+
+            return {
+                RuntimeValue(nullptr),
+                FlowControl::NONE
+            };
+        }
+
         return {
             std::move(result.value),
             FlowControl::NONE
