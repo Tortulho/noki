@@ -6,6 +6,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <limits>
+
 #include "runtimeobjectType.hpp"
 
 #include "runtimeval.hpp"
@@ -95,6 +97,24 @@ class Environment
                 : nullptr;
         }
 
+        void setExecutionClassDefinitionID(
+            RuntimeObjectInstanceID id
+        ) noexcept
+        {
+            executionClassDefinitionID = id;
+            executionClassDefinitionIsSet = true;
+        }
+
+        RuntimeObjectInstanceID getExecutionClassDefinitionID() const noexcept
+        {
+            if (executionClassDefinitionIsSet)
+                return executionClassDefinitionID;
+
+            return parent != nullptr
+                ? parent->getExecutionClassDefinitionID()
+                : std::numeric_limits<RuntimeObjectInstanceID>::max();
+        }
+
     private:
         std::unordered_map<std::string, RuntimeValue> variables;
 
@@ -114,6 +134,8 @@ class Environment
         
         RuntimeObject* executionReceiver = nullptr;
         bool executionReceiverIsSet = false;
+        RuntimeObjectInstanceID executionClassDefinitionID = std::numeric_limits<RuntimeObjectInstanceID>::max();
+        bool executionClassDefinitionIsSet = false;
 };
 
 #endif

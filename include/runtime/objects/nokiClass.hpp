@@ -7,7 +7,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
 #include "ast.hpp"
 #include "runtimeobject.hpp"
 #include "runtimeval.hpp"
@@ -33,6 +32,8 @@ public:
         Environment* moduleEnvironment,
         std::unique_ptr<ASTNode> declaration,
         RuntimeObjectInstanceID parentDefinitionID =
+            INVALID_CANONICAL_ID,
+        RuntimeObjectInstanceID baseDefinitionID =
             INVALID_CANONICAL_ID
     );
 
@@ -47,6 +48,8 @@ public:
         Environment* moduleEnvironment,
         RuntimeObjectInstanceID canonicalDefinitionID,
         RuntimeObjectInstanceID parentDefinitionID =
+            INVALID_CANONICAL_ID,
+        RuntimeObjectInstanceID baseDefinitionID =
             INVALID_CANONICAL_ID
     );
 
@@ -83,25 +86,24 @@ public:
         return canonicalDefinitionID;
     }
 
+    // Classe exterior: usada exclusivamente para nesting.
     RuntimeObjectInstanceID getParentDefinitionID() const noexcept
     {
         return parentDefinitionID;
     }
 
-    Environment* getModuleEnvironment() const noexcept
+    // Classe-base: usada exclusivamente para herança.
+    RuntimeObjectInstanceID getBaseDefinitionID() const noexcept
     {
-        return moduleEnvironment;
+        return baseDefinitionID;
     }
 
-    // Regista recursivamente as classes aninhadas
-    // na definição canónica atual.
     void registerNestedClasses(
         RuntimeObjectManager& manager,
         RuntimeObjectTypeID metaTypeID,
         std::vector<RuntimeObjectTypeID>& registeredTypeIDs
     );
 
-    // As classes aninhadas são armazenadas como RuntimeValue.
     void addNestedClass(
         const std::string& name,
         RuntimeValue value
@@ -133,7 +135,12 @@ private:
     RuntimeObjectInstanceID canonicalDefinitionID =
         INVALID_CANONICAL_ID;
 
+    // Classe exterior, para classes aninhadas.
     RuntimeObjectInstanceID parentDefinitionID =
+        INVALID_CANONICAL_ID;
+
+    // Classe-base, para herança simples.
+    RuntimeObjectInstanceID baseDefinitionID =
         INVALID_CANONICAL_ID;
 
     // A AST contém string_views. Esta storage mantém os seus

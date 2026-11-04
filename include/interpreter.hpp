@@ -4,8 +4,8 @@
 #include "runtime/runtimeval.hpp"
 #include "runtime/runtime.hpp"
 #include "ast.hpp"
-
 #include <string>
+#include <vector>
 
 class NokiClass;
 class NokiClassInstance;
@@ -64,7 +64,10 @@ private:
         const ASTNode& classDeclaration,
         const std::string& methodName,
         NokiClassInstance& instance,
-        bool allowDefaultConstruction
+        bool allowDefaultConstruction,
+        const NokiClass* declaringClass = nullptr,
+        const std::vector<RuntimeValue>* preEvaluatedInitArguments =
+            nullptr
     );
 };
 
